@@ -7,8 +7,10 @@ included under LICENSE and src/licenses/.
 
 The October 2026 agent-baton distribution uses generic CliWatch namespaces,
 portable configuration and launch/build scripts, and supports the public
-agent-baton task directory format. It contains no original repository history,
-personal runtime records or compiled dependencies.
+agent-baton task directory format. The source tree contains no original
+repository history, personal runtime records or compiled dependencies.
+Separately published Windows portable packages include the .NET runtime
+and retain its notices under licenses/.
 
 watch/ is MPL-2.0. The surrounding agent-baton repository retains its MIT
 license; the root license does not replace this directory's license.

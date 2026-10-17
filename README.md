@@ -28,7 +28,7 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 | [`codex/`](codex/) | **叫醒（Codex 侧）**：`codex-mail-wake` 插件，执行者交卷时把通知投回 Codex App 的原 Lead 会话 | Codex App（桌面版） |
 | [`mailbox/`](mailbox/) | **Lead 之间的信箱**：一封信就是一个 Markdown 文件，支持线程、回复和"需要回复"标记；本地守着来信，有信就叫醒 | 两个或多个 Lead 会话 |
 | [`acp/`](acp/) | **统一插头**：通用 ACP（Agent Client Protocol）客户端，驱动任何支持 ACP 的执行者；模型和档位只在对方支持时设置并回读，权限请求默认拒绝并逐条留痕 | 提供 ACP stdio 的 agent |
-| [`watch/`](watch/) | **执行观察窗**：只读查看本机 CLI 进程、派单记录和交卷状态；未知如实显示，结束任务留在历史 | Windows / .NET 8 |
+| [`watch/`](watch/) | **执行观察窗**：只读查看本机 CLI 进程、派单记录和交卷状态；未知如实显示，结束任务留在历史 | Windows x64（[成品下载](https://github.com/captpascallv-dev/agent-baton/releases/tag/watch-v0.1.0)） |
 
 ### 怎么组合
 
@@ -75,6 +75,10 @@ pwsh -NoProfile -File claude/bin/Dispatch.ps1 -Executor codex `
 ### Codex App 当 Lead
 
 `codex-mail-wake`（公共版 0.4.1）通过 Codex 插件 marketplace 安装；配置后用 `start_app_mailbox_watch` 持续接收登记交付，并经用户已安装的官方 App Tools 通知原 Lead。它支持可撤销的后台身份委托、精确回执与防重复发送；0.4.1 补齐发送超时隔离、同目标跨进程发送锁和旧聊天状态查询兼容。安装、配置、恢复及验证边界见 [Codex 说明](codex/README.md)。
+
+### 打开 Windows 执行窗
+
+下载 **[CLIWatch-0.1.0-win-x64.zip](https://github.com/captpascallv-dev/agent-baton/releases/download/watch-v0.1.0/CLIWatch-0.1.0-win-x64.zip)**，完整解压，双击 **`Start-CLI-Watch.cmd`**。包内自带运行时，无需编译或安装 .NET SDK / PowerShell 7。首次可查看本机 CLI；关联派单任务时，在 `config/default.json` 填自己的任务目录即可，见 [配置和启动说明](watch/README.md#下载成品包windows)。
 
 ### 两个 Lead 互相写信
 

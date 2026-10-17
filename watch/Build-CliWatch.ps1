@@ -13,6 +13,7 @@ if ($output.Equals($source, [StringComparison]::OrdinalIgnoreCase) -or
 $project = Join-Path $source 'CliWatch.App/CliWatch.App.csproj'
 $sdk = (Get-Command $SdkCommand -ErrorAction Stop | Select-Object -First 1).Source
 $publish = @('publish', $project, '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true',
+    '-m:1', '-p:UseSharedCompilation=false',
     '-o', $output, '-p:DebugType=none', '-p:DebugSymbols=false', '-p:SatelliteResourceLanguages=en',
     ('-p:PathMap=' + $PSScriptRoot + '=/_/watch'))
 & $sdk @publish
