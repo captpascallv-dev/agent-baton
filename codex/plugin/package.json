@@ -1,6 +1,6 @@
 {
   "name": "codex-mail-wake",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "type": "module",
   "license": "MIT",
   "engines": { "node": ">=22" },

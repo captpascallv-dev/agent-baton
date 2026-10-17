@@ -50,22 +50,30 @@ export class MailboxDriver {
   }
   acquireLeader() { return this.acquireLease('--lease'); }
   acquireControl() { return this.acquireLease('--authorization-lease'); }
-  acquireLease(flag) {
+  acquireTarget(ownerThreadId, stateDir) {
+    if (typeof ownerThreadId !== 'string' || !ownerThreadId.trim()) throw new Error('Exact target identity is required.');
+    return this.acquireLease('--target-send-lease', { root: stateDir, targetKey: key(ownerThreadId) });
+  }
+  acquireLease(flag, { root = this.root, targetKey = null } = {}) {
     return new Promise((resolve, reject) => {
-      const argv = ['-B', '-X', 'utf8', driverPath, flag, '--root', this.root];
+      const argv = ['-B', '-X', 'utf8', driverPath, flag];
+      if (targetKey !== null) argv.push(targetKey);
+      argv.push('--root', root);
       const child = spawn(this.pythonPath, argv, { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
       this.children.add(child);
-      const lease = { child, alive: false, release: () => { lease.alive = false; child.stdin.end(); } };
+      let markClosed;
+      const closed = new Promise(resolve => { markClosed = resolve; });
+      const lease = { child, alive: false, release: async () => { lease.alive = false; child.stdin.end(); await closed; } };
       let buffer = '', settled = false;
       const finish = (error, value) => {
         if (settled) return; settled = true; clearTimeout(timer);
         if (error) { child.kill(); reject(error); } else resolve(value);
       };
-      const timer = setTimeout(() => finish(new Error('Leader lease handshake timed out.')), 10000);
+      const timer = setTimeout(() => finish(new Error('OS lease handshake timed out.')), 10000);
       child.stderr.on('data', () => {});
       child.stdin.on('error', error => { lease.alive = false; finish(error); });
       child.on('error', error => finish(error));
-      child.on('close', () => { lease.alive = false; this.children.delete(child); finish(new Error('Leader lease exited before acquisition.')); });
+      child.on('close', () => { lease.alive = false; this.children.delete(child); markClosed(); finish(new Error('OS lease exited before acquisition.')); });
       child.stdout.on('data', data => {
         buffer += data;
         if (buffer.length > 4096) return finish(new Error('Invalid leader lease response.'));
@@ -173,6 +181,7 @@ export class AppMailboxEngine {
     this.leader?.release(); this.leader = null;
   }
   bridgeFailed(error) {
+    if (error?.code === 'MCP_REQUEST_TIMEOUT') return false;
     const confirmed = this.client.adapterStatus?.state === 'unavailable'
       || /timed out|process exited|input is closed|EPIPE|ECONNRESET|ENOENT/i.test(String(error));
     if (confirmed) {
@@ -438,27 +447,30 @@ export class AppMailboxEngine {
       const route = this.routes()[fault.project];
       const permission = route && this.permission(fault.project, route);
       if (!permission) continue;
-      // A transport fault may describe an OLD registered owner after handoff.
-      // Its destination remains coordinator, while the project permit is current.
-      const authorized = () => {
-        if (!this.transportAuthorized(actor)) return false;
-        const currentRoute = this.routes()[fault.project];
-        return Boolean(currentRoute && this.permission(fault.project, currentRoute)?.epoch === permission.epoch);
-      };
-      if (!authorized()) return;
-      if (!createJsonOnce(intentPath, { schemaVersion: 1, faultId, coordinatorThreadId: this.coordinator,
-        actorThreadId: actor.threadId, actorSource: actor.source, delegationGrantId: actor.grantId,
-        instanceId: this.instanceId, intentAtUtc: this.iso(), sentFields: ['threadId', 'prompt'], metadataFields: ['x-codex-turn-metadata.thread_id'] })) continue;
+      const lease = await this.driver.acquireTarget(this.coordinator, this.stateDir);
+      if (!lease) continue;
       try {
-        if (!authorized()) throw new Error('Fault authorization ended before send; intent retained without retry.');
-        const receipt = await this.client.send(this.coordinator, prompt, actor.threadId, authorized);
-        createJsonOnce(this.faultPath(faultId, 'receipt.json'), receipt);
-        createJsonOnce(outcomePath, { faultId, status: receipt?.isError ? 'rejected' : exactSendReceipt(receipt, this.coordinator) ? 'accepted' : 'uncertain',
-          atUtc: this.iso(), reason: 'Fault notification attempted once; receipt retained without retry.' });
-      } catch (error) {
-        createJsonOnce(outcomePath, { faultId, status: 'uncertain', atUtc: this.iso(), error: String(error), reason: 'Fault send failed or ambiguous; no repeat.' });
-        this.bridgeFailed(error);
-      }
+        // An old owner's fault still targets coordinator; the project permit is current.
+        const authorized = () => {
+          if (!lease.alive || !this.transportAuthorized(actor)) return false;
+          const currentRoute = this.routes()[fault.project];
+          return Boolean(currentRoute && this.permission(fault.project, currentRoute)?.epoch === permission.epoch);
+        };
+        if (!authorized()) return;
+        if (!createJsonOnce(intentPath, { schemaVersion: 1, faultId, coordinatorThreadId: this.coordinator,
+          actorThreadId: actor.threadId, actorSource: actor.source, delegationGrantId: actor.grantId,
+          instanceId: this.instanceId, intentAtUtc: this.iso(), sentFields: ['threadId', 'prompt'], metadataFields: ['x-codex-turn-metadata.thread_id'] })) continue;
+        try {
+          if (!authorized()) throw new Error('Fault authorization ended before send; intent retained without retry.');
+          const receipt = await this.client.send(this.coordinator, prompt, actor.threadId, authorized);
+          createJsonOnce(this.faultPath(faultId, 'receipt.json'), receipt);
+          createJsonOnce(outcomePath, { faultId, status: receipt?.isError ? 'rejected' : exactSendReceipt(receipt, this.coordinator) ? 'accepted' : 'uncertain',
+            atUtc: this.iso(), reason: 'Fault notification attempted once; receipt retained without retry.' });
+        } catch (error) {
+          createJsonOnce(outcomePath, { faultId, status: 'uncertain', atUtc: this.iso(), error: String(error), reason: 'Fault send failed or ambiguous; no repeat.' });
+          this.bridgeFailed(error);
+        }
+      } finally { await lease.release(); }
     }
   }
   async recoverReceipt(delivery) {
@@ -506,13 +518,24 @@ export class AppMailboxEngine {
   async processReady(item) {
     const actor = this.pollActor;
     if (!this.transportAuthorized(actor)) return;
+    const candidate = this.delivery(item.id); const route = this.exactRoute(candidate);
+    if (candidate.state !== 'pending' || !this.permission(candidate.project, route)) return;
+    const lease = await this.driver.acquireTarget(candidate.target_thread_id, this.stateDir);
+    if (!lease) return;
+    try { await this.processReadyLocked(item, candidate.target_thread_id, lease); }
+    finally { await lease.release(); }
+  }
+  async processReadyLocked(item, lockedOwner, lease) {
+    const actor = this.pollActor;
+    if (!lease.alive || !this.transportAuthorized(actor)) return;
     let delivery = this.delivery(item.id); const route = this.exactRoute(delivery);
+    if (delivery.target_thread_id !== lockedOwner) return;
     const permission = this.permission(delivery.project, route);
     if (!permission || delivery.state !== 'pending') return;
     if (fs.existsSync(path.join(this.root, 'claims', `${delivery.id}.lock`))) return;
     if (!this.client.pipePresent) return;
     const caller = actor.threadId;
-    const authorized = () => this.deliveryAuthorized(delivery, actor, permission.epoch);
+    const authorized = () => lease.alive && this.deliveryAuthorized(delivery, actor, permission.epoch);
     if (!authorized()) return;
     let observed;
     try { observed = await this.client.readThread(delivery.target_thread_id, caller, authorized); }

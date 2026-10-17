@@ -44,13 +44,15 @@ export function resolveInstalledOfficialEntry({ appToolsEntry = null, cacheRoot 
 }
 
 export class OfficialTools {
-  constructor({ env = process.env, appToolsEntry = null, timeoutMs = 20000,
+  constructor({ env = process.env, appToolsEntry = null, timeoutMs,
+    sendTimeoutMs = timeoutMs === undefined ? 60000 : timeoutMs,
     entryResolver = () => resolveInstalledOfficialEntry({ appToolsEntry, cacheRoot: officialCacheRootForEnvironment(env) }) } = {}) {
     // Each NEW process receives its own environment. No pipe is read from state.
     this.env = { ...env };
     this.entryResolver = entryResolver;
     this.adapterStatus = { state: 'not_connected', version: null };
-    this.timeoutMs = timeoutMs;
+    this.timeoutMs = timeoutMs === undefined ? 20000 : timeoutMs;
+    this.sendTimeoutMs = sendTimeoutMs;
     this.pipePresent = Boolean(this.env.CODEX_APP_TOOLS_PIPE_PATH?.trim());
     if (!this.pipePresent) this.adapterStatus.state = 'missing_launch_pipe';
     this.sequence = 0;
@@ -115,7 +117,7 @@ export class OfficialTools {
     });
     this.ready = (async () => {
       await this.request('initialize', { protocolVersion: '2024-11-05', capabilities: {},
-        clientInfo: { name: 'codex-mail-wake', version: '0.4.0' } });
+        clientInfo: { name: 'codex-mail-wake', version: '0.4.1' } });
       child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
       const catalog = await this.request('tools/list', {});
       for (const name of ['read_thread', 'send_message_to_thread']) {
@@ -128,12 +130,17 @@ export class OfficialTools {
   }
   request(method, params) {
     const id = ++this.sequence;
+    const timeoutMs = method === 'tools/call' && params?.name === 'send_message_to_thread'
+      ? this.sendTimeoutMs : this.timeoutMs;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         const error = new Error(`Official MCP timed out (${method}); a send is never automatically repeated.`);
-        reject(error); this.transportFailed(error);
-      }, this.timeoutMs);
+        // A single deadline does not prove a process/pipe failure. In particular,
+        // keep other submitted sends alive until their own original result.
+        error.code = 'MCP_REQUEST_TIMEOUT';
+        reject(error);
+      }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       if (!this.child || this.child.stdin.destroyed) {
         clearTimeout(timer); this.pending.delete(id); reject(new Error('Official MCP input is closed.')); return;
@@ -158,6 +165,22 @@ export class OfficialTools {
   async readThread(ownerThreadId, callerThreadId = ownerThreadId, authorized = null) {
     const result = await this.call('read_thread', { threadId: ownerThreadId, turnLimit: 1,
       includeOutputs: false, maxOutputCharsPerItem: 0 }, callerThreadId, authorized);
+    if (result.isError && result.content?.some(item => item.type === 'text'
+      && item.text.includes('thread/items/list is not supported yet'))) {
+      // Some old local threads cannot enumerate history. Reception only needs
+      // live status: use the official visible list, never local history files.
+      const listed = await this.call('list_threads', { limit: 50 }, callerThreadId, authorized);
+      if (listed.isError) throw new Error('Official live thread status is unavailable.');
+      const decoded = decodeText(listed);
+      const matches = [...(decoded?.pinnedThreads ?? []), ...(decoded?.threads ?? [])]
+        .filter(thread => thread.id === ownerThreadId && thread.kind === 'codex' && thread.hostId === 'local');
+      const statuses = new Set(['idle', 'notLoaded', 'active', 'systemError']);
+      if (!matches.length || matches.some(thread => !statuses.has(thread.status) || thread.status !== matches[0].status)) {
+        throw new Error('Exact local thread has no unambiguous official live status.');
+      }
+      if (authorized && !authorized()) throw new Error('Receiver authorization ended during status lookup.');
+      return { thread: { id: ownerThreadId, kind: 'codex', hostId: 'local', status: { type: matches[0].status } }, turns: [] };
+    }
     if (result.isError) throw new Error('Official read_thread rejected the read; native refusal retained.');
     const decoded = decodeText(result);
     if (decoded?.thread?.id !== ownerThreadId) throw new Error('Official read_thread returned a different owner identity.');

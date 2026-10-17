@@ -1,6 +1,6 @@
 {
   "name": "codex-mail-wake",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Persistent reception of registered CLI/Bot deliveries for their exact original Codex Lead.",
   "license": "MIT",
   "skills": "./skills/",

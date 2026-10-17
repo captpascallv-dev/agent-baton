@@ -1,6 +1,7 @@
 """Internal fixed-operation stdio driver for the bundled public ledger."""
 import argparse
 import json
+import re
 from pathlib import Path
 import sys
 import ledger
@@ -14,14 +15,21 @@ def main():
     leases = parser.add_mutually_exclusive_group()
     leases.add_argument("--lease", action="store_true")
     leases.add_argument("--authorization-lease", action="store_true")
+    leases.add_argument("--target-send-lease", metavar="TARGET_KEY")
     args = parser.parse_args()
     root = Path(args.root).resolve()
     root.mkdir(parents=True, exist_ok=True)
-    if args.lease or args.authorization_lease:
+    if args.lease or args.authorization_lease or args.target_send_lease:
         # Short grant/revoke controls serialize across MCP instances, separately
         # from the long receiver leader. OS releases both locks on process exit.
         name = ".codex-mail-wake.authorization.lock" if args.authorization_lease else ".codex-mail-wake.leader.lock"
-        with (root / name).open("a+b") as lock:
+        lock_path = root / name
+        if args.target_send_lease:
+            if not re.fullmatch(r"id-(?:[0-9a-f]{2}){1,80}|id-h[0-9a-f]{64}", args.target_send_lease):
+                raise ValueError("Invalid encoded target lock identity")
+            lock_path = root / "target-send-locks" / (args.target_send_lease + ".lock")
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+b") as lock:
             try:
                 ledger.acquire(lock)
             except OSError:

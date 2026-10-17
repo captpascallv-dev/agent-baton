@@ -1,4 +1,4 @@
-# Codex Mail Wake 0.4.0
+# Codex Mail Wake 0.4.1
 
 MIT。Node 22+、Python 3.10+。独立的可安装 Codex 插件：普通程序持续接收已登记 CLI/Bot 交付，完整通知发给登记时的原 Lead。没有私信功能、执行器启动、provider 调用或 PID 看门。收到一次交付后继续守候，默认没有总截止；等待本身不调用模型，Lead 处理通知仍会调用模型。
 
@@ -106,6 +106,14 @@ revoke 后只停止依赖该委托的新后台动作；具有独立真实 actor 
 
 无 grant、坏记录、错 coordinator/根/epoch 或缺 launch pipe 均拒绝委托恢复。坏委托需协调者明确 revoke 后才能新 grant。在领取、intent/send 前和 OS lease、scan、read/claim、桥 handshake 等关键 await 后复核 actor、epoch 和项目许可。已经提交的 send 保留真实 receipt 并沿原规则 ack；旧 sending/uncertain/manual_review_required 不自动重发。委托文件不保存 pipe；每个新进程只使用本次宿主环境提供的 pipe。
 
+## 0.4.1 收件兼容与并发修复
+
+发送通知默认等待 60 秒；握手和读取仍默认 20 秒。一个请求到期只结束该请求的等待，不会取消同一连接上其它已提交请求。真正进程退出或管道失败仍走原健康恢复。发送超时保留原 intent 和不确定状态，不自动重发；延长等待也不改变官方工具的接受或拒绝结果。
+
+登记交付与故障通知共用接收状态根下的 `app-mailbox/target-send-locks/`，按精确目标身份加非阻塞 OS 锁。同一目标正被另一进程发送时，本轮保留 pending；不同目标互不占锁。登记交付在持锁后重新核对原目标状态和许可，失锁或撤权后不领取/发送。锁由现有配置的 Python 驱动持有，进程退出或 stdin 关闭时释放；保留锁文件，不以删除文件恢复。已有领班锁、账本锁和永久交付 claim 继续各自生效。
+
+当官方 `read_thread` 明确报告 `thread/items/list is not supported yet` 时，收件预检改从官方 `list_threads` 的当前可见结果核对原目标。只接受精确 ID、Codex 本地聊天和一致的已知实时状态；仅 `idle` / `notLoaded` 可进入正常交付。查询覆盖当前返回的置顶聊天和最多 50 条非置顶聊天，未找到、不明确、一般拒绝或仍忙均保留 pending。这个兼容分支不读取本地历史文件或聊天正文，也不改变权限。
+
 ## 持续、恢复和故障
 
 `.codex-mail-wake.leader.lock` 由 Python lease 持有非阻塞 OS 锁，父 stdin EOF/进程退出由 OS 释放；其它实例每分钟尝试接替。每次 scan/claim/ack（包括默认 CLI）还共用 `.codex-mail-wake.driver.lock` 短锁；grant/revoke 共用 `.codex-mail-wake.authorization.lock` 短锁。永久 claims/<id>.lock 是交付独占权，不能删来重试；claim 输家直接返回，不写胜方 outcome。
@@ -120,7 +128,7 @@ intent 在 send 前完整 fsync、独占原子发布。超时/退出/拒绝/错�
 
 保留账本、OS 锁文件、接收许可、委托及历史、intent/receipt/outcome、faults、record-problems及快照。停止自己的 watcher/lease 让 OS 解锁，不删 claim/intent。更新插件不要删用户状态根。所有实例同一配置；状态已绑定其它账本时拒绝复用。
 
-服务遵循 MCP stdio 生命周期。服务**被重新加载且授权/pipe有效时可恢复**，不等于 App 启动就会加载；没有系统服务、计划任务或自动重启 provider/App。公共0.4.0的服务重建只以 stdio 与假官方宿主验证。完整 App 更新/关闭再打开、新真实交付、真实未加载线程及实际 Lead接续未在公共包现场验证；其它私有部署的局部恢复或只读桥证据不替代这项验收。
+服务遵循 MCP stdio 生命周期。服务**被重新加载且授权/pipe有效时可恢复**，不等于 App 启动就会加载；没有系统服务、计划任务或自动重启 provider/App。公共版的服务重建以 stdio 与假官方宿主验证。完整 App 更新/关闭再打开、新真实交付、真实未加载线程及实际 Lead接续未在公共包现场验证；其它私有部署的局部恢复或只读桥证据不替代这项验收。
 
 ## 公共包检查
 

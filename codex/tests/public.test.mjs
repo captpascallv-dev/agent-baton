@@ -76,6 +76,131 @@ const deliveries = f => sends(f).filter(item => item.params.arguments.prompt.sta
 const faults = f => sends(f).filter(item => item.params.arguments.prompt.startsWith('[app-mailbox-transport-fault:'));
 const central = (f, id) => readJson(path.join(f.mailboxRoot, 'deliveries', `${id}.json`));
 
+test('default send deadline preserves real 31-second acceptance and refusal without repeating either delivery', { timeout: 45000 }, async t => {
+  await Promise.all(['accept', 'reject'].map(async mode => {
+    const f = fixture(t); const item = job(f, mode);
+    const e = engine(f, { client: new OfficialTools({ env: f.env }) });
+    assert.equal(e.client.timeoutMs, 20000); assert.equal(e.client.sendTimeoutMs, 60000);
+    write(f.control, { sendDelayMs: 31000, sendMode: mode });
+    e.startWatch(coordinator); assert.equal(await e.canPoll(), true); await e.driver.run('scan');
+    const started = Date.now(); await e.processReady(item);
+    assert.ok(Date.now() - started >= 31000);
+    assert.equal(central(f, item.id).state, mode === 'accept' ? 'sent' : 'sending');
+    assert.equal(readJson(e.localPath(item.id, 'outcome.json')).status, mode === 'accept' ? 'sent' : 'uncertain');
+    assert.equal(readJson(e.localPath(item.id, 'receipt.json')).isError, mode === 'reject');
+    assert.equal(e.bridgeUnavailable, false);
+    await e.processReady(item); assert.equal(deliveries(f).length, 1);
+  }));
+});
+
+test('one read deadline leaves a concurrent original send and the engine bridge alive', async t => {
+  const f = fixture(t); const item = job(f);
+  const e = engine(f, { client: new OfficialTools({ env: f.env, timeoutMs: 250, sendTimeoutMs: 1500 }) });
+  write(f.control, { sendDelayMs: 800, delayedReadThread: 'slow-reader', readDelayMs: 650 });
+  e.startWatch(coordinator); assert.equal(await e.canPoll(), true); await e.driver.run('scan');
+  const sending = e.processReady(item); await until(() => deliveries(f).length === 1);
+  const originalHost = e.client.child;
+  await assert.rejects(e.client.readThread('slow-reader', actor), error => {
+    assert.equal(error.code, 'MCP_REQUEST_TIMEOUT'); assert.equal(e.bridgeFailed(error), false); return true;
+  });
+  assert.equal(e.client.child, originalHost); assert.equal(e.bridgeUnavailable, false);
+  await sending;
+  assert.equal(central(f, item.id).state, 'sent'); assert.equal(e.client.pending.size, 0);
+  assert.equal(deliveries(f).length, 1);
+});
+
+test('target OS leases exclude a second process, preserve case-sensitive targets and release on holder exit', async t => {
+  const f = fixture(t), a = new MailboxDriver({ root: f.mailboxRoot, pythonPath: python }), b = new MailboxDriver({ root: f.mailboxRoot, pythonPath: python });
+  f.engines.push({ close() { a.close(); b.close(); } });
+  let first, other, recovered;
+  try {
+    first = await a.acquireTarget('same-owner', f.stateDir);
+    assert.equal(await b.acquireTarget('same-owner', f.stateDir), null);
+    other = await b.acquireTarget('SAME-owner', f.stateDir); assert.equal(other.alive, true);
+    const exited = once(first.child, 'close'); first.child.kill(); await exited;
+    assert.equal(first.alive, false);
+    assert.ok(fs.existsSync(path.join(f.stateDir, 'target-send-locks', key('same-owner') + '.lock')));
+    recovered = await b.acquireTarget('same-owner', f.stateDir); assert.equal(recovered.alive, true);
+  } finally { await other?.release(); await recovered?.release(); }
+});
+
+test('delivery and fault notifications share the target gate and delivery rechecks the owner after contention', async t => {
+  const f = fixture(t); cli(f, ['route', '--project', 'demo', '--owner', coordinator, '--replace-owner']);
+  const item = job(f); const e = engine(f); e.startWatch(coordinator);
+  assert.equal(await e.canPoll(), true); await e.driver.run('scan');
+  e.recordFault(central(f, item.id), 'fixture', 'Synthetic fault', e.localPath(item.id, 'wait.json'));
+  const other = new MailboxDriver({ root: f.mailboxRoot, pythonPath: python }); f.engines.push({ close() { other.close(); } });
+  let held = await other.acquireTarget(coordinator, e.stateDir);
+  try {
+    await e.processReady(item); await e.flushFaults();
+    assert.equal(events(f).length, 0, 'busy target does not even start preflight or send');
+    assert.equal(central(f, item.id).state, 'pending');
+    const faultId = fs.readdirSync(path.join(e.stateDir, 'faults'))[0];
+    assert.equal(fs.existsSync(e.faultPath(faultId, 'intent.json')), false);
+    await held.release(); held = null;
+    await e.flushFaults(); assert.equal(faults(f).length, 1);
+    write(f.control, { ownerStatus: 'active' }); await e.processReady(item);
+    assert.equal(central(f, item.id).state, 'pending'); assert.equal(deliveries(f).length, 0);
+    write(f.control, { ownerStatus: 'idle' }); await e.processReady(item);
+    assert.equal(central(f, item.id).state, 'sent');
+    await e.flushFaults(); await e.processReady(item);
+    assert.equal(faults(f).length, 1); assert.equal(deliveries(f).length, 1);
+  } finally { await held?.release(); }
+});
+
+test('loss of the target lease during preflight leaves the original delivery unclaimed', async t => {
+  const f = fixture(t); const item = job(f); const e = engine(f);
+  const acquire = e.driver.acquireTarget.bind(e.driver); let targetLease;
+  e.driver.acquireTarget = async (...args) => { targetLease = await acquire(...args); return targetLease; };
+  const read = e.client.readThread.bind(e.client);
+  e.client.readThread = async (...args) => {
+    const result = await read(...args); const closed = once(targetLease.child, 'close'); targetLease.child.kill(); await closed; return result;
+  };
+  e.startWatch(coordinator); await e.tick();
+  assert.equal(central(f, item.id).state, 'pending'); assert.equal(sends(f).length, 0);
+  assert.equal(fs.existsSync(path.join(f.mailboxRoot, 'claims', item.id + '.lock')), false);
+});
+
+test('known legacy read incompatibility uses only an exact visible local status and keeps refusal or uncertainty pending', async t => {
+  const f = fixture(t); const item = job(f); const e = engine(f); e.startWatch(coordinator);
+  const entry = status => ({ id: owner, kind: 'codex', hostId: 'local', status });
+  const blocked = [
+    { listedThreads: [entry('active')] }, { listedThreads: [entry('systemError')] },
+    { listedThreads: [] }, { listedThreads: [entry('unknown')] },
+    { listedThreads: [{ ...entry('idle'), id: 'different-owner' }] },
+    { listedThreads: [{ ...entry('idle'), hostId: 'remote' }] },
+    { listedThreads: [{ ...entry('idle'), kind: 'chatgpt' }] },
+    { listedPinned: [entry('idle')], listedThreads: [entry('active')] },
+    { listedThreads: [entry('idle')], listReject: true },
+  ];
+  for (const control of blocked) {
+    write(f.control, { readLegacy: true, ...control }); await e.tick();
+    assert.equal(central(f, item.id).state, 'pending'); assert.equal(deliveries(f).length, 0);
+  }
+  const lists = () => events(f).filter(event => event.params?.name === 'list_threads');
+  const listCount = lists().length;
+  write(f.control, { readReject: true, listedThreads: [entry('idle')] }); await e.tick();
+  assert.equal(lists().length, listCount, 'ordinary refusals never enter compatibility lookup');
+  write(f.control, { readLegacy: true, listedPinned: [entry('idle')] }); await e.tick();
+  assert.equal(central(f, item.id).state, 'sent');
+  const second = job(f, 'not-loaded');
+  write(f.control, { readLegacy: true, listedThreads: [entry('notLoaded')] }); await e.tick();
+  assert.equal(central(f, second.id).state, 'sent'); assert.equal(deliveries(f).length, 2);
+  assert.ok(lists().every(event => event.params.arguments.limit === 50));
+});
+
+test('watch withdrawal before or during the legacy status lookup never claims or sends', async t => {
+  for (const stopAfter of ['read_thread', 'list_threads']) {
+    const f = fixture(t); const item = job(f); const e = engine(f); e.startWatch(coordinator);
+    write(f.control, { readLegacy: true, listedThreads: [{ id: owner, kind: 'codex', hostId: 'local', status: 'idle' }] });
+    const call = e.client.call.bind(e.client);
+    e.client.call = async (name, ...args) => { const result = await call(name, ...args); if (name === stopAfter) e.stopWatch(coordinator); return result; };
+    await e.tick(); assert.equal(central(f, item.id).state, 'pending'); assert.equal(sends(f).length, 0);
+    assert.equal(fs.existsSync(path.join(f.mailboxRoot, 'claims', item.id + '.lock')), false);
+    if (stopAfter === 'read_thread') assert.equal(events(f).filter(event => event.params?.name === 'list_threads').length, 0);
+  }
+});
+
 test('configuration and MCP identity fail closed; absent launch pipe or actor cannot scan', async t => {
   const f = fixture(t);
   const homes = { CODEX_HOME: path.join(f.base, 'default-home'), HOME: f.base, USERPROFILE: f.base };
@@ -178,10 +303,13 @@ test('one OS leader scans; retained lock files and permanent claims survive leas
   assert.ok(fs.existsSync(path.join(f.mailboxRoot, '.codex-mail-wake.leader.lock'))); assert.ok(fs.existsSync(path.join(f.mailboxRoot, 'claims', `${first.id}.lock`)));
 });
 
-test('uncertain intent and missing history stay single-attempt while same-pipe actor health recovery resumes independent delivery', async t => {
+test('request deadlines stay isolated; confirmed process failure uses same-pipe health recovery without repeating uncertain sends', async t => {
   const f = fixture(t); let at = Date.now(); const e = engine(f, { now: () => at }); const first = job(f);
   write(f.control, { sendMode: 'timeout' }); e.startWatch(coordinator); await e.tick();
   assert.equal(central(f, first.id).state, 'sending'); assert.equal(readJson(e.localPath(first.id, 'outcome.json')).status, 'uncertain');
+  assert.equal(e.bridgeUnavailable, false, 'a request deadline alone does not close the bridge');
+  const failedHost = e.client.child; failedHost.kill(); await once(failedHost, 'close');
+  assert.equal(e.bridgeUnavailable, true, 'actual host process exit still requires health recovery');
   createJsonOnce(e.localPath('old-history', 'intent.json'), { deliveryId: 'old-history', project: 'demo', ownerThreadId: owner });
   const next = job(f, 'job', '2'); write(f.control, { readReject: true }); at += 60000; await e.tick(); assert.equal(central(f, next.id), null);
   const actorReads = () => events(f).filter(event => event.params?.name === 'read_thread' && event.params.arguments.threadId === actor).length;
@@ -214,7 +342,7 @@ test('standard stdio process restart recovers durable exact receipt with ack onl
   assert.throws(() => resolveInstalledOfficialEntry({ cacheRoot: cache, appToolsEntry: path.join(root, 'tests', 'fixtures', 'fake-host.mjs') }), /valid server.mjs/);
   const first = service(f, path.join(root, 'tests', 'fixtures', 'crash-service.mjs')); let second;
   try {
-    assert.equal((await first.call('initialize')).serverInfo.version, '0.4.0');
+    assert.equal((await first.call('initialize')).serverInfo.version, '0.4.1');
     await first.call('tools/call', { name: 'start_app_mailbox_watch', arguments: { project: 'demo' }, _meta: { 'x-codex-turn-metadata': { thread_id: owner } } });
     await until(() => first.child.exitCode === 17); assert.equal(deliveries(f).length, 1); assert.equal(central(f, item.id).state, 'sending');
     second = service(f, path.join(root, 'plugin', 'server.mjs')); await second.call('initialize');
@@ -430,7 +558,7 @@ test('public stdio grant then service reload with no actor or tools/call resumes
   const f = fixture(t); write(f.config, { ...JSON.parse(fs.readFileSync(f.config)), pollIntervalMs: 1000 });
   const env = { ...f.env }; delete env.CODEX_THREAD_ID;
   first = service(f, path.join(root, 'plugin', 'server.mjs'), env);
-  assert.equal((await first.call('initialize')).serverInfo.version, '0.4.0');
+  assert.equal((await first.call('initialize')).serverInfo.version, '0.4.1');
   const params = name => ({ name, arguments: {}, _meta: { 'x-codex-turn-metadata': { thread_id: coordinator } } });
   toolValue(await first.call('tools/call', params('start_app_mailbox_watch')));
   const grantId = toolValue(await first.call('tools/call', params(GRANT))).delegation.grantId;
@@ -518,12 +646,14 @@ test('revoke, stop-all and epoch change cannot be revived by startup or status; 
   assert.ok(deliveries(f).every(item => item.params.arguments.prompt.includes('project: demo')));
 });
 
-test('revocation after lease, scan, read, claim, intent or bridge-connect awaits stops new effects; submitted sends retain receipts', async t => {
-  for (const stage of ['lease', 'scan', 'read', 'claim', 'intent', 'connect', 'send']) {
+test('revocation after leader/target lease, scan, read, claim, intent or bridge-connect awaits stops new effects; submitted sends retain receipts', async t => {
+  for (const stage of ['lease', 'target-lease', 'scan', 'read', 'claim', 'intent', 'connect', 'send']) {
     const f = fixture(t); await permitAndGrant(f); const item = job(f, `during-${stage}`); const next = job(f, `next-${stage}`);
     const d = delegated(f); const revoke = () => d.delegation.revoke(coordinator, 'turn_metadata'); let triggered = false;
     if (stage === 'lease') {
       const original = d.driver.acquireLeader.bind(d.driver); d.driver.acquireLeader = async () => { const lease = await original(); revoke(); triggered = true; return lease; };
+    } else if (stage === 'target-lease') {
+      const original = d.driver.acquireTarget.bind(d.driver); d.driver.acquireTarget = async (...args) => { const lease = await original(...args); revoke(); triggered = true; return lease; };
     } else if (stage === 'scan' || stage === 'claim') {
       const original = d.driver.run.bind(d.driver); d.driver.run = async (op, args) => { const result = await original(op, args); if (op === stage) { revoke(); triggered = true; } return result; };
     } else if (stage === 'read') {

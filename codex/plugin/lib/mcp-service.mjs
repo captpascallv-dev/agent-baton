@@ -28,7 +28,7 @@ export function callerIdentity(params, env = process.env) {
 }
 export async function handleRequest(message, engine, env = process.env) {
   if (!message || message.jsonrpc !== '2.0') throw new Error('Invalid JSON-RPC request.');
-  if (message.method === 'initialize') return { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'codex-mail-wake', version: '0.4.0' },
+  if (message.method === 'initialize') return { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'codex-mail-wake', version: '0.4.1' },
     instructions: 'Start only after explicit continuous-reception authorization. Receipts do not prove actual Lead continuation. Existing intents are never automatically resent.' };
   if (message.method === 'tools/list') return { tools: TOOLS };
   if (message.method === 'ping') return {};

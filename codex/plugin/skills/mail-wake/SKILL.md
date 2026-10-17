@@ -3,7 +3,7 @@ name: mail-wake
 description: Start, inspect or stop explicitly authorized CLI/Bot delivery reception, and grant or revoke coordinator background delegation.
 ---
 
-Codex Mail Wake 0.4.0, MIT. Node22+/Python3.10+. Only registered outbox delivery reception; no personal inbox or provider execution.
+Codex Mail Wake 0.4.1, MIT. Node22+/Python3.10+. Only registered outbox delivery reception; no personal inbox or provider execution.
 
 1. Before dispatch, configure the bundled ledger route with the actual original Lead ID. Register project/job/attempt and a fresh independent outbox. The executor writes REPORT.md and relative deliverables, then READY.json last (status completed/blocked/failed). Reuse of an outbox by another job/attempt is rejected. A silent exit without READY requires an executor/adapter failed READY or Lead investigation; do not infer task completion from PID.
 2. Only after explicit continuous-reception authorization, call start_app_mailbox_watch for the owned project and inspect app_mailbox_status. The configured coordinator may omit project for all active routes. Do not pass target/root/model/host/command overrides; no private inbox tools exist.

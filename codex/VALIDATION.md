@@ -1,3 +1,25 @@
+# Public Codex 0.4.1 validation
+
+2026-10-17 (Asia/Taipei), Windows, Node 24.19.0 and Python 3.12.10.
+
+```text
+npm --prefix codex/plugin test
+node codex/tools/check-public.mjs
+```
+
+Both commands passed. The receiver suite has 22 passing tests and no failures; the structure check verifies package/plugin/MCP version 0.4.1, the five existing tools, JavaScript syntax, Python syntax and absence of literal machine user paths/session IDs in this subtree. The test process tree was limited to 2 GiB; observed peak was 0.30 GiB.
+
+| Changed behavior | Evidence |
+| --- | --- |
+| Request deadlines | Two real isolated fake-host sends waited 31 seconds with the default client: acceptance was acknowledged and refusal stayed uncertain, both single-attempt. A separate read timed out while an original send was pending; the send completed and the engine kept the connection. Confirmed fake-host process exit still triggered the original same-pipe health recovery. |
+| Target serialization | Two Python lease processes contended for the same target; case-distinct targets remained independent on Windows. Killing the holder released the OS lock without deleting its file. Registered deliveries and coordinator faults shared the target gate. Preflight rechecked an active owner after contention; target-lease loss and watch revocation before claim prevented sending. |
+| Legacy preflight | Only the known unsupported-history error entered official visible-status lookup. Exact local idle/notLoaded targets delivered; active/systemError, missing/wrong/remote targets, wrong kind, unknown/conflicting status and refusal remained pending. Watch withdrawal before or during fallback prevented claim/send. |
+| Existing receiver behavior | The existing public tests still cover ledger boundaries, immutable claims/outboxes, exact receipt recovery, prelaunch rejection, relative attachments, explicit delegation/revocation, submitted-send receipts and multi-process leader handoff. |
+
+These are public-code tests with the repository's synthetic MCP host and temporary ledgers. No production plugin, real notification, provider, private inbox or shared App lifecycle was exercised. CLI marketplace installation was not repeated because package layout and dependencies did not change; the retained 0.4.0 installation evidence below is historical. Minimum runtimes, other operating systems and full real Desktop delivery/lifecycle remain unverified for 0.4.1.
+
+## Preserved 0.4.0 evidence
+
 # Public Codex 0.4.0 validation
 
 Actual environment: Windows / Node v24.19.0 / Python 3.12.10 / Codex CLI 0.160.1. This run covers the public package, bundled ledger, fake official-tool dependency and isolated CLI installation. Earlier evidence below is retained as historical reference. Private deployment tests are separate and are not public Desktop acceptance.
