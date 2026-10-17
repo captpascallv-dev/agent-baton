@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <OutputType>WinExe</OutputType>
+    <ApplicationManifest>App.manifest</ApplicationManifest>
+    <RootNamespace>CliWatch.App</RootNamespace>
+    <AssemblyName>CliWatch.App</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../CliWatch.Contracts/CliWatch.Contracts.csproj" />
+    <ProjectReference Include="../CliWatch.Collection/CliWatch.Collection.csproj" />
+    <ProjectReference Include="../CliWatch.Normalization/CliWatch.Normalization.csproj" />
+    <ProjectReference Include="../CliWatch.Projection/CliWatch.Projection.csproj" />
+    <ProjectReference Include="../CliWatch.Views/CliWatch.Views.csproj" />
+  </ItemGroup>
+</Project>

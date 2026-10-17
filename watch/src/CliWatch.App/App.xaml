@@ -1,0 +1,83 @@
+<Application x:Class="CliWatch.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Startup="OnStartup"
+             Exit="OnExit"
+             ShutdownMode="OnExplicitShutdown">
+  <Application.Resources>
+    <!-- Beautiful UI light tokens, approximated in sRGB for WPF. -->
+    <Color x:Key="HudCanvasColor">#FFF4F5F7</Color>
+    <Color x:Key="HudPanelColor">#FFFFFFFF</Color>
+    <Color x:Key="HudInsetColor">#FFF7F8F9</Color>
+    <Color x:Key="HudLineColor">#FFE8EAED</Color>
+    <Color x:Key="HudLineStrongColor">#FFDDE0E4</Color>
+    <Color x:Key="HudTextColor">#FF1C2026</Color>
+    <Color x:Key="HudMutedColor">#FF5C6570</Color>
+    <Color x:Key="HudFaintColor">#FF8B939C</Color>
+    <Color x:Key="HudMintColor">#FF2D9A62</Color>
+    <SolidColorBrush x:Key="HudBackground" Color="{StaticResource HudCanvasColor}"/>
+    <SolidColorBrush x:Key="HudPanel" Color="{StaticResource HudPanelColor}"/>
+    <SolidColorBrush x:Key="HudInset" Color="{StaticResource HudInsetColor}"/>
+    <SolidColorBrush x:Key="HudLine" Color="{StaticResource HudLineColor}"/>
+    <SolidColorBrush x:Key="HudLineStrong" Color="{StaticResource HudLineStrongColor}"/>
+    <SolidColorBrush x:Key="HudText" Color="{StaticResource HudTextColor}"/>
+    <SolidColorBrush x:Key="HudMuted" Color="{StaticResource HudMutedColor}"/>
+    <SolidColorBrush x:Key="HudFaint" Color="{StaticResource HudFaintColor}"/>
+    <SolidColorBrush x:Key="HudMint" Color="{StaticResource HudMintColor}"/>
+    <SolidColorBrush x:Key="HudHover" Color="#FFF1F3F5"/>
+    <SolidColorBrush x:Key="HudSelected" Color="#FFF0F4F2"/>
+    <SolidColorBrush x:Key="ToneActive" Color="#FF2D9A62"/>
+    <SolidColorBrush x:Key="ToneActiveTint" Color="#FFE8F6EE"/>
+    <SolidColorBrush x:Key="ToneQuiet" Color="#FFC9782A"/>
+    <SolidColorBrush x:Key="ToneQuietTint" Color="#FFFBF1E6"/>
+    <SolidColorBrush x:Key="ToneDelivered" Color="#FF3B6FBF"/>
+    <SolidColorBrush x:Key="ToneDeliveredTint" Color="#FFEEF3FB"/>
+    <SolidColorBrush x:Key="ToneFailed" Color="#FFC4473C"/>
+    <SolidColorBrush x:Key="ToneFailedTint" Color="#FFF9ECEA"/>
+    <FontFamily x:Key="HudFont">Microsoft YaHei UI</FontFamily>
+    <Style TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource HudText}"/>
+      <Setter Property="FontFamily" Value="{StaticResource HudFont}"/>
+      <Setter Property="FontSize" Value="13"/>
+    </Style>
+    <Style x:Key="ChromeButton" TargetType="Button">
+      <Setter Property="Height" Value="28"/>
+      <Setter Property="MinWidth" Value="52"/>
+      <Setter Property="Margin" Value="0,0,6,4"/>
+      <Setter Property="Padding" Value="10,0"/>
+      <Setter Property="Foreground" Value="{StaticResource HudText}"/>
+      <Setter Property="Background" Value="{StaticResource HudPanel}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource HudLineStrong}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FontFamily" Value="{StaticResource HudFont}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="SnapsToDevicePixels" Value="True"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="8" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{StaticResource HudHover}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{StaticResource HudInset}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="QuietButton" TargetType="Button" BasedOn="{StaticResource ChromeButton}">
+      <Setter Property="Background" Value="{StaticResource HudInset}"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{StaticResource HudMuted}"/>
+    </Style>
+  </Application.Resources>
+</Application>

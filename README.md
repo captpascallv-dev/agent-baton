@@ -20,7 +20,7 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 
 ---
 
-## 四个部分
+## 五个部分
 
 | 目录 | 干什么 | 适用 |
 | --- | --- | --- |
@@ -28,6 +28,7 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 | [`codex/`](codex/) | **叫醒（Codex 侧）**：`codex-mail-wake` 插件，执行者交卷时把通知投回 Codex App 的原 Lead 会话 | Codex App（桌面版） |
 | [`mailbox/`](mailbox/) | **Lead 之间的信箱**：一封信就是一个 Markdown 文件，支持线程、回复和"需要回复"标记；本地守着来信，有信就叫醒 | 两个或多个 Lead 会话 |
 | [`acp/`](acp/) | **统一插头**：通用 ACP（Agent Client Protocol）客户端，驱动任何支持 ACP 的执行者；模型和档位只在对方支持时设置并回读，权限请求默认拒绝并逐条留痕 | 提供 ACP stdio 的 agent |
+| [`watch/`](watch/) | **执行观察窗**：只读查看本机 CLI 进程、派单记录和交卷状态；未知如实显示，结束任务留在历史 | Windows / .NET 8 |
 
 ### 怎么组合
 
@@ -39,6 +40,8 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
    │  写任务卡
    ▼
  claude/ Dispatch.ps1 ──启动──▶ 执行者（Codex CLI / Cursor / Grok Build / PI / 任何 ACP agent …）
+   │                                   │
+   └────────── watch/ 只读观察 ◀─────────┘
    ▲                                   │ 干活，最后写 READY.json
    │                                   ▼
    └── 叫醒原会话 ◀── claude/ 守候 或 codex/ 插件（只看文件，不调模型）
@@ -47,6 +50,7 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 - **派活**用 `claude/`：Lead 写任务卡，`Dispatch.ps1` 启动执行者，`Wait-Delivery.ps1` 在交卷时退出，Claude Code 回到原会话。Codex App 里的 Lead 不走这套脚本，而是用 `codex/` 插件接收交卷通知。
 - **执行者只会 ACP** 时，把 `acp/acp_client.py` 当成启动命令，写进 `claude/executors.json`。任务卡仍然要求执行者把产物和 `READY.json` 写进交卷目录：ACP 客户端只负责跑协议，不代替交卷。
 - **不止一个 Lead** 时，加上 `mailbox/`。它不启动执行者，也不看 `READY.json`，只负责 Lead 之间的信。
+- **想随时看执行情况** 时，加上 [`watch/`](watch/)。它读取登记和进程身份，不派单，也不把进程结束或交卷当成业务验收。
 - **想让一群 Grok Bot 当执行者**：见 [docs/grokbot.md](docs/grokbot.md)。本仓库不带调用代码，只讲清怎么用官方 BDK 扩展接入、要加哪层约定、踩过哪些坑。
 
 ---
@@ -152,10 +156,22 @@ pwsh -NoProfile -File mailbox/tests/Smoke.ps1
 python acp/tests/smoke.py
 ```
 
+`watch/` 另需 Windows 和 .NET 8 SDK，构建后运行自己的测试与公开目录检查：
+
+```powershell
+dotnet test watch/src/CliWatch.Tests/CliWatch.Tests.csproj -c Release
+pwsh -NoProfile -File watch/tools/Check-Public.ps1
+pwsh -NoProfile -File watch/Build-CliWatch.ps1
+pwsh -NoProfile -File watch/tests/Smoke.ps1
+```
+
+首次还原 .NET 开发依赖需要访问 NuGet；这些测试使用本地夹具，不调用模型。
+
 全部使用本地模拟执行者、假 ACP agent 和假 MCP 宿主，不需要模型账号，也不碰生产数据。[CI 示例](docs/offline-ci.example.yml)可以复制到 `.github/workflows/ci.yml` 启用；当前仓库没有自动工作流。离线检查和真实模型任务、App 生命周期验收不是同一个范围。
 
 本项目不由 OpenAI 或 Anthropic 发布，也不包含它们的私有工具源码。
 
 ## License
 
-[MIT](LICENSE)
+- `claude/`、`codex/`、`mailbox/`、`acp/` 及根文档：[MIT](LICENSE)。
+- `watch/`：[MPL-2.0](watch/LICENSE)，来源与第三方声明见 [watch/NOTICE.txt](watch/NOTICE.txt)。

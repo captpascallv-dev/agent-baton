@@ -205,6 +205,10 @@ Set-Content -LiteralPath (Join-Path $Outbox 'REPORT.md') -Value '中文交卷完
         Assert-That ((Get-Content -LiteralPath (Join-Path $jobPath 'agent.log') -Raw -Encoding utf8).Contains('中文执行日志')) 'Chinese executor log is missing.'
         $terminal = Get-Content -LiteralPath (Join-Path $jobPath 'terminal.json') -Raw -Encoding utf8 | ConvertFrom-Json
         Assert-That ($terminal.exit_code -eq 0) 'terminal.json did not record a successful executor exit.'
+        $runnerOwner = Get-Content -LiteralPath (Join-Path $jobPath 'owner.json') -Raw -Encoding utf8 | ConvertFrom-Json
+        Assert-That ($runnerOwner.job_id -eq $job.job_id -and $runnerOwner.attempt_id -eq '1') 'Runner observation identity lost its registered job.'
+        Assert-That ($runnerOwner.pid -eq $job.host_pid -and $runnerOwner.start_time_utc_ticks -gt 0) 'Runner PID/birth identity is missing.'
+        Assert-That ($terminal.pid -eq $runnerOwner.pid -and $terminal.start_time_utc_ticks -eq $runnerOwner.start_time_utc_ticks) 'Terminal identity differs from the original runner.'
         Assert-That ($job.watch_minutes -eq 29) 'Default dispatch did not keep the 29-minute watch.'
         Pass "$mode Dispatch -> Run-Agent -> REPORT/READY -> Wait-Delivery, spaces and UTF-8"
     }

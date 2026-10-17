@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../CliWatch.Contracts/CliWatch.Contracts.csproj" />
+    <ProjectReference Include="../CliWatch.Projection/CliWatch.Projection.csproj" />
+  </ItemGroup>
+</Project>

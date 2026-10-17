@@ -1,0 +1,222 @@
+<UserControl x:Class="CliWatch.Views.HudView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent"
+             Focusable="True"
+             Language="zh-CN">
+  <UserControl.Resources>
+    <SolidColorBrush x:Key="HudBg" Color="#FFF4F5F7"/>
+    <SolidColorBrush x:Key="HudPanel" Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="HudInset" Color="#FFF7F8F9"/>
+    <SolidColorBrush x:Key="HudLine" Color="#FFE8EAED"/>
+    <SolidColorBrush x:Key="HudLineStrong" Color="#FFDDE0E4"/>
+    <SolidColorBrush x:Key="HudText" Color="#FF1C2026"/>
+    <SolidColorBrush x:Key="HudMuted" Color="#FF5C6570"/>
+    <SolidColorBrush x:Key="HudFaint" Color="#FF8B939C"/>
+    <SolidColorBrush x:Key="HudHover" Color="#FFF1F3F5"/>
+    <SolidColorBrush x:Key="HudSelected" Color="#FFF0F4F2"/>
+    <SolidColorBrush x:Key="ToneActive" Color="#FF2D9A62"/>
+    <SolidColorBrush x:Key="ToneActiveTint" Color="#FFE8F6EE"/>
+    <SolidColorBrush x:Key="ToneQuiet" Color="#FFC9782A"/>
+    <SolidColorBrush x:Key="ToneQuietTint" Color="#FFFBF1E6"/>
+    <SolidColorBrush x:Key="ToneDelivered" Color="#FF3B6FBF"/>
+    <SolidColorBrush x:Key="ToneDeliveredTint" Color="#FFEEF3FB"/>
+    <SolidColorBrush x:Key="ToneFailed" Color="#FFC4473C"/>
+    <SolidColorBrush x:Key="ToneFailedTint" Color="#FFF9ECEA"/>
+    <Style x:Key="MutedCaption" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource HudMuted}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <Style x:Key="BodyText" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource HudText}"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <Style x:Key="QuietChip" TargetType="Border">
+      <Setter Property="Background" Value="{StaticResource HudInset}"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Padding" Value="7,2"/>
+      <Setter Property="Margin" Value="0,0,6,0"/>
+    </Style>
+    <Style x:Key="ProjectListBoxItem" TargetType="ListBoxItem">
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="Focusable" Value="True"/>
+      <Setter Property="AutomationProperties.AutomationId" Value="{Binding ProjectId}"/>
+      <Setter Property="AutomationProperties.Name" Value="{Binding Name}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <ContentPresenter/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </UserControl.Resources>
+
+  <DockPanel LastChildFill="True">
+    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+      <DockPanel LastChildFill="True">
+        <Button x:Name="HistoryToggle" DockPanel.Dock="Right" Content="显示近期历史"
+                Margin="8,0,0,0" Padding="10,4" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Click="OnHistoryToggle" Cursor="Hand" FontSize="12"
+                Foreground="{StaticResource HudMuted}"
+                AutomationProperties.AutomationId="HistoryToggle"
+                AutomationProperties.Name="显示近期历史">
+          <Button.Template>
+            <ControlTemplate TargetType="Button">
+              <Border Background="#FFF1F3F5" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+            </ControlTemplate>
+          </Button.Template>
+        </Button>
+        <StackPanel>
+          <TextBlock x:Name="HudTitleText" Text="任务" FontSize="13" FontWeight="SemiBold"
+                     Foreground="{StaticResource HudText}"/>
+          <TextBlock x:Name="CollectedAtText" Style="{StaticResource MutedCaption}" Margin="0,2,0,0"
+                     AutomationProperties.AutomationId="CollectedAtText"/>
+          <TextBlock x:Name="QualityText" Style="{StaticResource MutedCaption}" Margin="0,1,0,0"
+                     AutomationProperties.AutomationId="QualityText"/>
+          <TextBlock x:Name="FreshnessText" Style="{StaticResource MutedCaption}" Margin="0,1,0,0" Visibility="Collapsed"/>
+        </StackPanel>
+      </DockPanel>
+      <Border x:Name="BannerHost" Margin="0,8,0,0" Padding="10,7" CornerRadius="10"
+              Background="{StaticResource HudInset}" BorderThickness="0" Visibility="Collapsed">
+        <TextBlock x:Name="BannerText" Style="{StaticResource BodyText}" FontSize="12.5"/>
+      </Border>
+    </StackPanel>
+
+    <Border x:Name="UserStrip" DockPanel.Dock="Top" Margin="0,0,0,8" Padding="10,8"
+            Background="#FFFBF6EE" CornerRadius="10" Visibility="Collapsed">
+      <StackPanel>
+        <TextBlock x:Name="UserCountText" FontWeight="SemiBold" Foreground="{StaticResource HudText}" FontSize="12.5"/>
+        <ItemsControl x:Name="UserList" Margin="0,6,0,0">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding Text}" Style="{StaticResource BodyText}" FontSize="12.5" Margin="0,0,0,4"
+                         ToolTip="{Binding FullText}"/>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Border>
+
+    <TextBlock x:Name="IssuesText" DockPanel.Dock="Bottom" Style="{StaticResource MutedCaption}" Margin="0,8,0,0"
+               MaxHeight="52" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
+
+    <Grid MinHeight="180">
+      <ListBox x:Name="ProjectList"
+               Background="Transparent"
+               BorderThickness="0"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+               ScrollViewer.VerticalScrollBarVisibility="Auto"
+               SelectionMode="Single"
+               ItemContainerStyle="{StaticResource ProjectListBoxItem}"
+               SelectionChanged="OnProjectSelectionChanged"
+               KeyboardNavigation.TabNavigation="Continue"
+               VirtualizingStackPanel.IsVirtualizing="False"
+               ScrollViewer.CanContentScroll="False"
+               AutomationProperties.AutomationId="ProjectList">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <Border x:Name="RowCard" Margin="0,0,0,8" Padding="10,9" CornerRadius="14"
+                    Background="{StaticResource HudPanel}" BorderBrush="{StaticResource HudLine}" BorderThickness="1"
+                    ToolTip="{Binding OverallLineFull}">
+              <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="14"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <Ellipse x:Name="Dot" Width="8" Height="8" VerticalAlignment="Center"
+                           Fill="{StaticResource HudFaint}"/>
+                  <TextBlock Grid.Column="1" Text="{Binding ProjectLabel}" FontSize="12"
+                             Foreground="{StaticResource HudFaint}" TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center" Margin="8,0,8,0"/>
+                  <Border x:Name="Badge" Grid.Column="2" VerticalAlignment="Center" CornerRadius="10"
+                          Padding="8,3" Background="{StaticResource HudInset}">
+                    <TextBlock x:Name="BadgeText" Text="{Binding OverallLine}" FontSize="11.5" FontWeight="Medium"
+                               Foreground="{StaticResource HudMuted}" TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis" MaxWidth="168"/>
+                  </Border>
+                </Grid>
+                <TextBlock Grid.Row="1" Text="{Binding TaskTitle}" FontSize="13" FontWeight="Medium"
+                           Foreground="{StaticResource HudText}" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                <StackPanel Grid.Row="2" Margin="0,4,0,0">
+                  <TextBlock Text="{Binding MetaLine}" FontSize="12" Foreground="{StaticResource HudMuted}"
+                             TextWrapping="Wrap"/>
+                  <TextBlock FontSize="12" Foreground="{StaticResource HudFaint}" Margin="0,2,0,0"
+                             TextWrapping="Wrap">
+                    <Run Text="{Binding RuntimeText}"/>
+                    <Run Text="  "/>
+                    <Run Text="{Binding LastActivityText}"/>
+                  </TextBlock>
+                </StackPanel>
+              </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+              <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}" Value="True">
+                <Setter TargetName="RowCard" Property="Background" Value="{StaticResource HudSelected}"/>
+                <Setter TargetName="RowCard" Property="BorderBrush" Value="{StaticResource HudLineStrong}"/>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsMouseOver}" Value="True">
+                <Setter TargetName="RowCard" Property="Background" Value="{StaticResource HudHover}"/>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding BadgeKind}" Value="active">
+                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource ToneActive}"/>
+                <Setter TargetName="Badge" Property="Background" Value="{StaticResource ToneActiveTint}"/>
+                <Setter TargetName="BadgeText" Property="Foreground" Value="{StaticResource ToneActive}"/>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding BadgeKind}" Value="wait">
+                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource ToneQuiet}"/>
+                <Setter TargetName="Badge" Property="Background" Value="{StaticResource ToneQuietTint}"/>
+                <Setter TargetName="BadgeText" Property="Foreground" Value="{StaticResource ToneQuiet}"/>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding BadgeKind}" Value="quiet">
+                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource ToneQuiet}"/>
+                <Setter TargetName="Badge" Property="Background" Value="{StaticResource ToneQuietTint}"/>
+                <Setter TargetName="BadgeText" Property="Foreground" Value="{StaticResource ToneQuiet}"/>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding BadgeKind}" Value="unknown">
+                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource HudFaint}"/>
+                <Setter TargetName="Badge" Property="Background" Value="{StaticResource HudInset}"/>
+                <Setter TargetName="BadgeText" Property="Foreground" Value="{StaticResource HudMuted}"/>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding BadgeKind}" Value="delivered">
+                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource ToneDelivered}"/>
+                <Setter TargetName="Badge" Property="Background" Value="{StaticResource ToneDeliveredTint}"/>
+                <Setter TargetName="BadgeText" Property="Foreground" Value="{StaticResource ToneDelivered}"/>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding BadgeKind}" Value="failed">
+                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource ToneFailed}"/>
+                <Setter TargetName="Badge" Property="Background" Value="{StaticResource ToneFailedTint}"/>
+                <Setter TargetName="BadgeText" Property="Foreground" Value="{StaticResource ToneFailed}"/>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding BadgeKind}" Value="retired">
+                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource HudFaint}"/>
+                <Setter TargetName="Badge" Property="Background" Value="{StaticResource HudInset}"/>
+                <Setter TargetName="BadgeText" Property="Foreground" Value="{StaticResource HudMuted}"/>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding BadgeKind}" Value="finished">
+                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource HudMuted}"/>
+                <Setter TargetName="Badge" Property="Background" Value="{StaticResource HudInset}"/>
+                <Setter TargetName="BadgeText" Property="Foreground" Value="{StaticResource HudMuted}"/>
+              </DataTrigger>
+            </DataTemplate.Triggers>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <TextBlock x:Name="EmptyText" HorizontalAlignment="Center" VerticalAlignment="Center"
+                 Style="{StaticResource MutedCaption}" Visibility="Collapsed" TextAlignment="Center"/>
+    </Grid>
+  </DockPanel>
+</UserControl>

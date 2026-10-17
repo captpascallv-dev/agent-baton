@@ -1,0 +1,6 @@
+runtime/
+**/bin/
+**/obj/
+*.user
+config/*.local.json
+TestResults/
