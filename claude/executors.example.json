@@ -14,7 +14,8 @@
     "cursor": {
       "command": "cursor-agent",
       "args": ["-p", "--model", "grok-4.7-xhigh", "--force", "--trust", "--workspace", "{workspace}",
-               "--add-dir", "{outbox}", "--add-dir", "{carddir}", "--output-format", "text", "{pointer}"]
+               "--add-dir", "{outbox}", "--add-dir", "{carddir}", "--output-format", "text", "{pointer}"],
+      "unset_env": ["SHELL", "MSYSTEM"]
     },
     "grok": {
       "command": "grok",
@@ -24,7 +25,9 @@
     "pi": {
       "command": "pi",
       "args": ["-p", "--provider", "openai-codex", "--model", "gpt-6.1-sol", "--thinking", "xhigh",
-               "--no-session", "{pointer}"]
+               "--no-session", "{pointer}"],
+      "args_on_resume": ["-p", "--provider", "openai-codex", "--model", "gpt-6.1-sol", "--thinking", "xhigh",
+               "--resume", "{resume}", "{pointer}"]
     },
     "dsh": {
       "command": "dsh",

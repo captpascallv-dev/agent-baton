@@ -5,7 +5,11 @@ $spec = Get-Content -LiteralPath (Join-Path $JobDir 'spec.json') -Raw | ConvertF
 # UTF-8 both ways; otherwise non-ASCII prompts/logs get mangled on Windows (e.g. GBK code page).
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $OutputEncoding = [Text.UTF8Encoding]::new($false)
-foreach ($k in $spec.env.Keys) { if ($spec.env[$k]) { [Environment]::SetEnvironmentVariable($k, $spec.env[$k]) } }
+# A single-element JSON array can come back as a string. Wrap before iterating.
+foreach ($name in @($spec['unset_env'])) {
+    if ($name) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
+}
+foreach ($k in $spec.env.Keys) { if ($spec.env[$k]) { [Environment]::SetEnvironmentVariable($k, [string]$spec.env[$k]) } }
 Set-Location -LiteralPath $spec.cwd
 $log = Join-Path $JobDir 'agent.log'
 $cmdArgs = @($spec.args)
@@ -14,4 +18,15 @@ if ($spec.stdin_card) {
 } else {
     & $spec.command @cmdArgs *> $log
 }
-"$LASTEXITCODE" | Set-Content (Join-Path $JobDir 'exit_code.txt')
+$code = $LASTEXITCODE
+"$code" | Set-Content (Join-Path $JobDir 'exit_code.txt')
+# Atomic end record for operators. The default WATCH command does not treat this file as a terminal marker.
+$term = [ordered]@{
+    job_id = (Split-Path -Leaf $JobDir)
+    pid = $PID
+    exit_code = $code
+    finished_at_utc = (Get-Date).ToUniversalTime().ToString('o')
+}
+$tmp = Join-Path $JobDir 'terminal.json.tmp'
+$term | ConvertTo-Json | Set-Content -LiteralPath $tmp -Encoding utf8
+Move-Item -LiteralPath $tmp -Destination (Join-Path $JobDir 'terminal.json') -Force

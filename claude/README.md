@@ -26,12 +26,12 @@ bin/Dispatch.ps1        派单：按 executors.json 组装命令，后台启动�
 bin/Run-Agent.ps1       后台进程里实际执行 agent CLI，写 agent.log / exit_code.txt
 bin/Wait-Delivery.ps1   守候：READY.json→0；原生结束标记但无READY→3；进程消失但无READY→4；超时→2
 bin/Wait-Many.ps1       多任务守候：任一交卷或执行者结束就退出
-bin/Pending.ps1         列出未交卷任务并给出重挂守候命令
+bin/Pending.ps1         列出未交卷任务并给出重挂守候命令（跳过带 CLOSED.txt 的任务）
 executors.example.json  执行者配置样例（复制为 executors.json 后按需修改）
 templates/TASK_CARD.md  任务卡模板（含交卷约定）
 CLAUDE.snippet.md       放进 CLAUDE.md 的一段说明，让 Claude 知道怎么用
 tests/Smoke.ps1         无模型、无凭据、无网络的本地交付链检查
-jobs/<id>/              每次派单的记录：job.json、spec.json、任务卡副本、agent.log
+jobs/<id>/              每次派单的记录：job.json、spec.json、任务卡副本、agent.log、exit_code.txt、terminal.json
 ```
 
 ## 安装
@@ -54,8 +54,19 @@ jobs/<id>/              每次派单的记录：job.json、spec.json、任务卡
 | `stdin_card` | `true` 时把任务卡全文从标准输入喂给它（如 `codex exec -`） |
 | `cwd` | 工作目录，默认 `{workspace}` |
 | `env` | 额外环境变量（空值会被忽略）。**不要把 API key 写进这里**，用 CLI 自己的登录或系统环境变量 |
+| `unset_env` | 启动前从执行进程里删掉的环境变量名，例如 Cursor 在 Git Bash 下要去掉 `SHELL` 和 `MSYSTEM` |
+| `args_on_resume` | 带了 `-ResumeSessionId` 时改用的参数列表。里面要有 `{resume}` 或 `{resume_path}`。没有这一项时，派单会拒绝续接，不会悄悄新开一会话 |
 
-占位符：`{workspace}` `{outbox}` `{card}`（任务卡绝对路径）`{carddir}` `{jobdir}` `{pointer}`。
+占位符：`{workspace}` `{outbox}` `{card}`（任务卡绝对路径）`{carddir}` `{jobdir}` `{pointer}`。续接时还可以用 `{resume}`（会话 id）和 `{resume_path}`（会话文件绝对路径）。
+
+续接原会话：
+
+```powershell
+pwsh -NoProfile -File ./bin/Dispatch.ps1 -Executor pi -Workspace <dir> -Outbox <dir> `
+  -PromptFile <card.md> -Task "name" -ResumeSessionId <uuid> -ResumeSessionPath <session-file>
+```
+
+`-ResumeSessionPath` 只在 `args_on_resume` 含 `{resume_path}` 时必填。样例里的 `--resume` 只说明占位符放在哪；以你安装的 CLI 帮助为准。沙箱、服务档、快速模式也写在该执行者的 `args` 里，不另设开关。样例保持工作区沙箱，不会默认打开全权限。
 
 可选 `-JobId` 只接受 1–128 位 ASCII 字母、数字、`_` 和 `-`，首位必须是字母或数字；省略时生成 UUID。任务记录固定写入本安装目录的 `jobs/<id>`。
 
@@ -68,9 +79,9 @@ jobs/<id>/              每次派单的记录：job.json、spec.json、任务卡
 | 执行者 | 关键参数 | 说明 |
 | --- | --- | --- |
 | Codex CLI | `codex exec -m <model> -c model_reasoning_effort=<档> -s workspace-write -C <ws> -` | 任务卡走 stdin；有沙箱，写权限限于工作区和 `--add-dir`。想用另一个账号，设 `env.CODEX_HOME` 指向单独的 Codex 目录 |
-| Cursor CLI | `cursor-agent -p --model <model> --force --trust --workspace <ws>` | `--force` 是用户显式选择的自动批准权限 |
+| Cursor CLI | `cursor-agent -p --model <model> --force --trust --workspace <ws>` | `--force` 是用户显式选择的自动批准权限。样例会在执行进程里去掉 `SHELL` 和 `MSYSTEM`，避免 Git Bash 把命令行改成 bash 后和 PowerShell 钩子冲突 |
 | Grok Build | `grok --prompt-file <card> -m <model> --reasoning-effort <档> --always-approve --cwd <ws>` | 从文件读 prompt；`--always-approve` 是用户显式选择的自动批准权限 |
-| PI | `pi -p --provider <p> --model <m> --thinking <档> --no-session` | |
+| PI | `pi -p --provider <p> --model <m> --thinking <档> --no-session` | 续接时用 `args_on_resume`，样例把 `--no-session` 换成 `--resume {resume}`。标志是否如此，先核对所装版本 |
 | DeepSeek DSH | `dsh --profile headless "<task>"` | 内置 headless profile；模型取 DSH 自己的设置 |
 
 **接入其他 CLI**：可为支持非交互任务及本地文件交付的 CLI 添加配置，并单独验证它的参数、权限及交卷行为。现有配置样例不保证所有 CLI 版本可直接使用。
@@ -81,7 +92,13 @@ jobs/<id>/              每次派单的记录：job.json、spec.json、任务卡
 
 ## 守候期限与续挂
 
-贡献者报告其 Claude Code 环境的后台命令约 30 分钟会被停止，所以默认 WATCH 命令每轮守 29 分钟。这个期限不是所有版本的保证。退出码 2 而执行者进程还活着，可再挂一轮；续挂需要 Claude 处理通知并调用工具，会使用正常会话用量。
+贡献者报告其 Claude Code 环境的后台命令约 30 分钟会被停止，所以默认 WATCH 命令每轮守 29 分钟（`min(29, TimeoutMinutes + 10)`；默认 `-TimeoutMinutes 90` 仍是 29）。这个期限不是所有版本的保证。退出码 2 而执行者进程还活着，可再挂一轮；续挂需要 Claude 处理通知并调用工具，会使用正常会话用量。
+
+在 Windows 上，派单用外壳启动执行进程，不继承派单命令的输出管道。否则宿主会一直等到执行者退出，才把派单结果还给你。
+
+执行进程结束时会原子写入 `jobs/<id>/terminal.json`（先写临时文件再改名）。默认 WATCH 不把它当终态标记，进程消失仍是退出码 4。需要把它当成执行者自己的结束标记时，把该路径传给 `-TerminalFiles`。
+
+`Pending.ps1` 重挂时使用该任务记录里的 `watch_minutes`，旧记录没有这个字段时用 29。不再跟进的任务，在 `jobs/<id>/CLOSED.txt` 放任意内容，Pending 会跳过。
 
 同时派了多单时，用 `bin/Wait-Many.ps1` 一个守候盯全部，任意一单交卷就叫醒你，避免一到点跳出一串超时通知。
 

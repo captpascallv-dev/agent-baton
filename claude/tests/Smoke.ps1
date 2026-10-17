@@ -96,9 +96,23 @@ try {
     Assert-That ($example.executors.Count -gt 0) 'Executor example is empty.'
     foreach ($entry in $example.executors.Values) {
         Assert-That ([bool]$entry.command -and $entry.args -is [array]) 'Invalid executor command/args example.'
-        foreach ($argument in $entry.args) {
-            foreach ($match in [regex]::Matches($argument, '\{[^{}]+\}')) {
-                Assert-That ($match.Value -in @('{workspace}', '{outbox}', '{card}', '{carddir}', '{jobdir}', '{pointer}')) "Unknown placeholder $($match.Value)"
+        $basePlaceholders = @('{workspace}', '{outbox}', '{card}', '{carddir}', '{jobdir}', '{pointer}')
+        foreach ($argument in @($entry.args)) {
+            foreach ($match in [regex]::Matches([string]$argument, '\{[^{}]+\}')) {
+                Assert-That ($match.Value -in $basePlaceholders) "Unknown placeholder $($match.Value)"
+            }
+        }
+        $entryNames = @($entry.Keys)
+        if ($entryNames -contains 'args_on_resume' -and $entry.args_on_resume) {
+            foreach ($argument in @($entry.args_on_resume)) {
+                foreach ($match in [regex]::Matches([string]$argument, '\{[^{}]+\}')) {
+                    Assert-That ($match.Value -in ($basePlaceholders + @('{resume}', '{resume_path}'))) "Unknown resume placeholder $($match.Value)"
+                }
+            }
+        }
+        if ($entryNames -contains 'unset_env' -and $entry.unset_env) {
+            foreach ($name in @($entry.unset_env)) {
+                Assert-That ($name -match '^[A-Za-z_][A-Za-z0-9_]*$') "Invalid unset_env name $name"
             }
         }
     }
@@ -118,7 +132,7 @@ try {
     Set-Content -LiteralPath $card -Value $cardText -Encoding utf8
     $mock = Join-Path $tempRoot 'mock executor.ps1'
     @'
-param([string]$Outbox, [string]$Mode, [string]$Pointer, [string]$Workspace)
+param([string]$Outbox, [string]$Mode, [string]$Pointer, [string]$Workspace, [string]$Resume, [string]$ResumePath)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
@@ -129,9 +143,18 @@ elseif ($Mode -eq 'pointer') {
     $text = Get-Content -LiteralPath $Matches[1] -Raw -Encoding utf8
 }
 elseif ($Mode -eq 'no-ready') { '中文执行者退出，没有交卷。'; exit 7 }
+elseif ($Mode -eq 'resume') {
+    if ($env:SHELL -or $env:MSYSTEM) { throw 'Inherited shell env was not cleared.' }
+    if (-not $Resume) { throw 'Missing resume id.' }
+    if (-not (Test-Path -LiteralPath $ResumePath -PathType Leaf)) { throw 'Missing resume path.' }
+    Set-Content -LiteralPath (Join-Path $Outbox 'resume-seen.txt') -Value $Resume -Encoding utf8
+    $text = ''
+}
 else { throw 'Unknown mock mode.' }
-if (-not $text.Contains('中文任务：离线交付') -or -not $text.Contains('葡萄、执行、交卷。')) { throw 'UTF-8 task card was lost.' }
-Set-Content -LiteralPath (Join-Path $Outbox 'received-card.txt') -Value $text -Encoding utf8
+if ($Mode -ne 'resume') {
+    if (-not $text.Contains('中文任务：离线交付') -or -not $text.Contains('葡萄、执行、交卷。')) { throw 'UTF-8 task card was lost.' }
+    Set-Content -LiteralPath (Join-Path $Outbox 'received-card.txt') -Value $text -Encoding utf8
+}
 Set-Content -LiteralPath (Join-Path $Outbox 'REPORT.md') -Value '中文交卷完成：葡萄、执行、交卷。' -Encoding utf8
 '中文执行日志：任务已完成。'
 @{ status = 'completed'; deliverables = @('REPORT.md', 'received-card.txt'); notes = '中文离线交付' } |
@@ -147,6 +170,13 @@ Set-Content -LiteralPath (Join-Path $Outbox 'REPORT.md') -Value '中文交卷完
             stdin_card = ($mode -eq 'stdin')
         }
         if ($mode -eq 'pointer') { $mockExecutors[$mode].args += @('-Pointer', '{pointer}') }
+    }
+    $mockExecutors['resume'] = @{
+        command = $pwsh
+        args = @('-NoProfile', '-File', $mock, '-Outbox', '{outbox}', '-Mode', 'resume', '-Workspace', '{workspace}')
+        args_on_resume = @('-NoProfile', '-File', $mock, '-Outbox', '{outbox}', '-Mode', 'resume', '-Workspace', '{workspace}', '-Resume', '{resume}', '-ResumePath', '{resume_path}')
+        stdin_card = $false
+        unset_env = @('SHELL', 'MSYSTEM')
     }
     @{ executors = $mockExecutors } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $config -Encoding utf8
     $dispatch = Join-Path $sandbox 'bin/Dispatch.ps1'
@@ -173,6 +203,9 @@ Set-Content -LiteralPath (Join-Path $Outbox 'REPORT.md') -Value '中文交卷完
         $jobPath = Join-Path $sandbox "jobs/$($job.job_id)"
         Assert-That ((Get-Content -LiteralPath (Join-Path $jobPath 'exit_code.txt') -Raw).Trim() -eq '0') 'Mock executor did not exit successfully.'
         Assert-That ((Get-Content -LiteralPath (Join-Path $jobPath 'agent.log') -Raw -Encoding utf8).Contains('中文执行日志')) 'Chinese executor log is missing.'
+        $terminal = Get-Content -LiteralPath (Join-Path $jobPath 'terminal.json') -Raw -Encoding utf8 | ConvertFrom-Json
+        Assert-That ($terminal.exit_code -eq 0) 'terminal.json did not record a successful executor exit.'
+        Assert-That ($job.watch_minutes -eq 29) 'Default dispatch did not keep the 29-minute watch.'
         Pass "$mode Dispatch -> Run-Agent -> REPORT/READY -> Wait-Delivery, spaces and UTF-8"
     }
 
@@ -216,6 +249,42 @@ exit $LASTEXITCODE
     $resumed = Invoke-Pwsh @('-NoProfile', '-Command', ($watch + '; exit $LASTEXITCODE')) 4
     Assert-That ($resumed.Output.Contains('state=process-gone-without-ready')) 'Pending recovery WATCH command was not executable.'
     Pass 'Pending filters delivered jobs and emits an executable recovery command'
+
+    $resumeId = [guid]::NewGuid().ToString('D')
+    $resumeFile = Join-Path $tempRoot 'resume session.jsonl'
+    Set-Content -LiteralPath $resumeFile -Value "session-marker`n" -Encoding utf8
+    $env:SHELL = 'bash'
+    $env:MSYSTEM = 'MINGW64'
+    try {
+        $refusedOutbox = Join-Path $tempRoot 'resume refused outbox'
+        $refused = Invoke-Script $dispatch @('-Executor', 'stdin', '-Workspace', $workspace, '-Outbox', $refusedOutbox,
+            '-PromptFile', $card, '-Task', 'resume refused', '-JobId', 'smoke-resume-refused', '-Config', $config,
+            '-ResumeSessionId', $resumeId) 1
+        Assert-That ($refused.Output.Contains('no args_on_resume')) 'Resume without args_on_resume was not refused.'
+        Assert-That (-not (Test-Path -LiteralPath $refusedOutbox)) 'Refused resume created an outbox.'
+        $resumeOutbox = Join-Path $tempRoot 'resume outbox 中文'
+        $resumeResult = Invoke-Script $dispatch @('-Executor', 'resume', '-Workspace', $workspace, '-Outbox', $resumeOutbox,
+            '-PromptFile', $card, '-Task', 'resume ok', '-JobId', 'smoke-resume', '-Config', $config,
+            '-ResumeSessionId', $resumeId, '-ResumeSessionPath', $resumeFile)
+        Assert-That ($resumeResult.Output -match 'DISPATCHED .* pid=(\d+)') "Missing resume dispatch PID: $($resumeResult.Output)"
+        $resumeHost = Get-Process -Id ([int]$Matches[1]) -ErrorAction SilentlyContinue
+        if ($resumeHost) { $started.Add([pscustomobject]@{ Id = $resumeHost.Id; StartTime = $resumeHost.StartTime }) }
+        $resumeJob = Get-Content -LiteralPath (Join-Path $sandbox 'jobs/smoke-resume/job.json') -Raw | ConvertFrom-Json
+        Assert-That ($resumeJob.resume_session_id -eq $resumeId) 'job.json did not record the resume id.'
+        $resumeWait = Invoke-Script $wait @('-JobDir', $resumeOutbox, '-ProcessId', [string]$resumeJob.host_pid, '-TimeoutMinutes', '0.5', '-IntervalSeconds', '1')
+        Assert-That ($resumeWait.Output.Contains('state=ready')) 'Resume dispatch did not deliver.'
+        Assert-That ((Get-Content -LiteralPath (Join-Path $resumeOutbox 'resume-seen.txt') -Raw -Encoding utf8).Trim() -eq $resumeId) 'Executor did not see the resume id.'
+        Wait-HostExit $resumeJob.host_pid
+    } finally {
+        Remove-Item Env:SHELL, Env:MSYSTEM -ErrorAction SilentlyContinue
+    }
+    Pass 'Resume uses args_on_resume, and a missing resume template is refused before writes'
+
+    Set-Content -LiteralPath (Join-Path $sandbox 'jobs/smoke-no-ready/CLOSED.txt') -Value 'closed' -Encoding utf8
+    $closedPending = Invoke-Script $pending
+    Assert-That ($closedPending.Output.Contains('NO PENDING JOBS')) 'CLOSED.txt job was still pending.'
+    Assert-That (-not $closedPending.Output.Contains('PENDING smoke-no-ready')) 'CLOSED.txt did not hide the unfinished job.'
+    Pass 'Pending skips a job directory marked CLOSED.txt'
 
     foreach ($badId in @('../escape', '..\escape', '.', 'nested/job')) {
         $badOutbox = Join-Path $tempRoot 'invalid id outbox'
