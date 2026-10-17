@@ -4,12 +4,21 @@
 
 > Let an expensive "lead" agent (Claude Code or Codex App) only plan, dispatch and review, while cheaper agent CLIs do the work. When an executor delivers, a local watcher resumes the lead's original conversation. Local programs do the waiting; no relay model handles each delivery. Host notifications and optional watchdog turns still consume model tokens when they run.
 
-这个仓库分两块：
+这个仓库分四块：
 
 | 目录 | 是什么 | 适用 |
 | --- | --- | --- |
 | [`claude/`](claude/) | 派单和守候脚本：Claude Code 当 Lead，把任务卡派给任意 agent CLI，交卷后自动叫醒 | Claude Code（CLI / 桌面版） |
 | [`codex/`](codex/) | `codex-mail-wake` 插件：让 Codex App 的原会话在执行者交卷时被自动叫醒 | Codex App（桌面版） |
+| [`mailbox/`](mailbox/) | Lead 之间的对等信箱：一封 Markdown 一封信，本地守着来信 | 两个或多个 Lead 会话 |
+| [`acp/`](acp/) | 通用 ACP 客户端：按 Agent Client Protocol 驱动一个会说 ACP 的执行者 | 提供 ACP stdio 的 agent |
+
+## 四块怎么一起用
+
+- **派活**用 `claude/`。Lead 写任务卡，`Dispatch.ps1` 启动执行者，`Wait-Delivery.ps1` 在交卷时退出，Claude Code 回到原会话。Codex App 里的 Lead 不走这套脚本，用 `codex/` 插件接收交付通知。
+- **Lead 之间说话**用 `mailbox/`。它不启动执行者，也不看 `READY.json`。
+- **执行者只会 ACP** 时，用 `acp/` 做启动命令，再写进 `claude/executors.json`。任务卡仍然要求执行者把产物和 `READY.json` 写进交卷目录。ACP 客户端只跑协议，不代替交卷。
+- 等待都是本地文件轮询。模型只在 Lead 被叫醒之后，以及执行者真正干活的时候运行。
 
 ---
 
@@ -105,7 +114,7 @@ pwsh -NoProfile -File claude/bin/Dispatch.ps1 -Executor codex `
 
 0.4.0 增加可撤销的后台身份委托：配置协调者先明确启用全体接收，再按正常审批调用 `grant_app_mailbox_delegation({})`。新服务被宿主加载时，即使没有启动 actor 或任何工具调用，也可凭当前有效 grant 与本次 launch pipe 恢复接收；状态如实标注 `persisted_delegation`。grant 绑定配置协调者、两个状态根和当前 all-watch epoch，不开启接收权限，也不代替普通工具 caller。`revoke_app_mailbox_delegation({})` 撤回后台委托；停止全体接收或改变 epoch 后必须重新明确 grant。见 [委托契约](codex/README.md#后台身份委托040)。
 
-公开包自带最小交付账本，不需要作者的私有 `mailbox.py`、业务 collector、账号或本机目录。两个私人主对话之间的信箱功能不在本仓库中。Codex 插件本身只负责收件，不替你启动执行模型或判断业务验收。
+公开包自带最小交付账本，不需要作者的私有 `mailbox.py`、业务 collector、账号或本机目录。Lead 之间的对等信箱在 [`mailbox/`](mailbox/)，和本插件的交付账本不是同一条链路。Codex 插件本身只负责收件，不替你启动执行模型或判断业务验收。
 
 ### 交付与恢复
 
@@ -173,6 +182,8 @@ pwsh -NoProfile -File claude/bin/Dispatch.ps1 -Executor codex `
 ```powershell
 npm --prefix codex/plugin test
 pwsh -NoProfile -File claude/tests/Smoke.ps1
+pwsh -NoProfile -File mailbox/tests/Smoke.ps1
+python acp/tests/smoke.py
 ```
 
 使用本地模拟执行者和假 MCP 宿主，不需要模型账号、真实桌面唤醒或生产数据。[Windows/Ubuntu CI示例](docs/offline-ci.example.yml)可复制到 `.github/workflows/ci.yml` 启用；当前仓库没有自动工作流，首次发布只完成本地Windows检查。启用CI需要相应的仓库工作流写权限。离线检查与真实模型任务及App生命周期验收是不同范围。
