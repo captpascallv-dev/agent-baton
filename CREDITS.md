@@ -8,9 +8,9 @@ The six AI girls in the studio are unofficial, community-made personifications o
 
 | 角色 Character | 研究室里 In the studio | 原设计 Original design | 原作授权 Original terms | 本项目素材 Our files |
 | --- | --- | --- | --- | --- |
-| GPT | Codex | ZipZipPipe | 需署名，不可商用 / attribution required, non-commercial | `gpt-chibi.png`, `gpt-portrait.png` |
-| Claude | Claude | ZipZipPipe | 需署名，不可商用 / attribution required, non-commercial | `claude-chibi.png`, `claude-portrait.png` |
-| DeepSeek（鲸鱼娘 / whale maid） | DSH | 上善无形 | CC BY-NC-SA 4.0 | `deepseek-chibi.png`, `deepseek-portrait.png` |
+| GPT | Codex | ZipZipPipe | 需署名，不可商用 / attribution required, non-commercial | `gpt-chibi.png`, `gpt-portrait.png`, `gpt-stand.png` |
+| Claude | Claude | ZipZipPipe | 需署名，不可商用 / attribution required, non-commercial | `claude-chibi.png`, `claude-portrait.png`, `claude-stand.png` |
+| DeepSeek（鲸鱼娘 / whale maid） | DSH | 上善无形 | CC BY-NC-SA 4.0 | `deepseek-chibi.png`, `deepseek-portrait.png`, `deepseek-stand.png` |
 | Grok | Grok / GrokBuild | ZipZipPipe | 需署名，不可商用 / attribution required, non-commercial | `grok-chibi.png`, `grok-portrait.png` |
 | Gemini | 房间伙伴 / room companion | ZipZipPipe | 需署名，不可商用 / attribution required, non-commercial | `gemini-chibi.png`, `gemini-portrait.png` |
 | Kimi | 房间伙伴 / room companion | ZipZipPipe | 需署名，不可商用 / attribution required, non-commercial | `kimi-chibi.png`, `kimi-portrait.png` |

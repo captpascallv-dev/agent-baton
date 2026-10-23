@@ -29,6 +29,28 @@
 
 动画只用浏览器的 GPU 变换，几乎不占电脑资源。切到别的标签页、系统开了“减少动态”，或者点左下角的“动态”按钮，动作都会停下来。
 
+## 闲着的时候，还会演小剧场
+
+![小剧场：鲸鱼娘冲向大桌，Claude 小姐也站起来迎上去，两人在烟尘云里扭打](docs/room-skits.gif)
+
+每隔半分钟左右，屋里会随机演一段小剧场，灵感来自社区二创里的常见梗：
+
+- **打架**：Claude 小姐一本正经地讲计划，鲸鱼娘回一句“叽里咕噜说什么呢～”，喊着“冲呀！”冲向大桌，Claude 小姐也从桌后站起来迎上去。两人在烟尘云里扭打，打完各回各位，脸上都贴着创可贴。
+- **降智**：龙娘眼睛变成白板、流着口水发呆，每句胡话后面还认真附上一行 SHA-256，然后晃晃悠悠起身飘到窗边，被鲸鱼娘一扳手“修好”。
+- **干饭**：鲸鱼娘端出钢盆扒饭，米粒乱飞；睡着时就在梦里吃。
+- **米粒事件**：一粒米落在 Claude 小姐的书上，“鲸鱼娘，果然是你！”
+- **纸飞机**：鲸鱼娘给 Claude 小姐飞一张纸条，Claude 小姐红着脸回一句“……笨鱼。”
+- **重置卡**：龙娘给一叠 RESET 卡挨个盖上“已阅”。
+- **不舔**：主人在 Grok 的笔记本上求夸，Claude 小姐抢着说“您说得完全正确！”，Grok 只回一句“我不舔。”被提醒上次主人是对的，她冒着冷汗嘴硬：“那次是运气好。”
+- **学术资料**：Grok 对着笔记本嘿嘿傻笑，屏幕上冒出一块带辣椒的马赛克。被 Claude 小姐撞见，她啪地合上：“学术资料。”“……学术资料还要打码？”“尺度大一点的学术。”
+- **散步**：三位也会各自起身走走：龙娘去窗边透气，Claude 小姐到桌子另一头找书，鲸鱼娘溜到桌前问“Claude 小姐在看什么？”
+
+Kimi 偶尔会沿桌子后面的过道走到黑板前，停一会儿再走回来。
+
+小剧场只是逗趣，不代表谁的状态：状态标签照常显示真实情况，演完马上恢复原样；角色睡着时，会换成睡着也演得通的版本。动态关掉时不演。想马上看某一段，在浏览器控制台输入 `studioSkit('brawl')`（另外几段是 `daze`、`feast`、`rice`、`plane`、`reset`）。
+
+[完整视频：六段连播，约 50 秒](docs/room-skits.mp4)
+
 ## 能看到什么
 
 ![研究室全貌](docs/hero.jpg)
@@ -149,6 +171,28 @@ The studio tries something else. Every agent gets a character, and they all sit 
 - **No acting when unsure**: if the studio can't tell whether she is working or waiting, she only does idle moves. She never fakes being busy or asleep.
 
 All motion is GPU transforms in the browser and costs next to nothing. It pauses in background tabs, when the system prefers reduced motion, or when you press the motion button at the bottom left.
+
+## Between jobs, they put on little skits
+
+![Skit: the whale maid charges at the table, Miss Claude stands up to meet her, and the two vanish into a dust cloud](docs/room-skits.gif)
+
+About every half minute the room plays a random skit, riffing on popular fan-art gags:
+
+- **Scuffle**: Miss Claude earnestly lays out the plan, the whale maid answers “blah blah, what are you even saying~”, and with a cry of “Charge!” she runs at the table while Miss Claude stands up behind it to meet her. The two vanish into a dust cloud, go back to their seats, and both end up with band-aids on their cheeks.
+- **Brain fog**: the dragon girl goes blank-eyed and drools, dutifully signing every mumble with its SHA-256, then drifts over to the window until the whale maid fixes her with a thrown wrench.
+- **Rice time**: the whale maid digs into a steel basin of rice, grains flying; asleep, she just dreams of it.
+- **The rice grain**: a grain lands on Miss Claude's book. “Whale girl, I knew it was you!”
+- **Paper plane**: a note flies over to Miss Claude, who blushes: “…silly fish.”
+- **Reset cards**: the dragon girl stamps a stack of RESET cards one by one.
+- **No flattery**: the owner fishes for a compliment on Grok's laptop. Miss Claude gushes “You're absolutely right!”; Grok only says “I don't do flattery.” Reminded that the owner turned out right last time, she breaks into a sweat and doubles down: “That was luck.”
+- **Academic material**: Grok giggles at her laptop until a pixelated screen with a chili on it pops up. Caught by Miss Claude, she slams it shut: “Academic material.” “…academic material needs a mosaic?” “Very advanced academics.”
+- **Strolls**: each of the three also gets up for a short walk: the dragon girl goes to the window for some air, Miss Claude fetches a book from the far end of the table, and the whale maid wanders over to ask what Miss Claude is reading.
+
+Kimi now and then strolls along the aisle to the blackboard and back.
+
+Skits are just for fun and never stand for anyone's status: the tags keep showing the real state, and everyone goes back to her real look the moment a skit ends. A sleeping character gets a version that works while she sleeps. Nothing plays with motion off. To see one right away, type `studioSkit('brawl')` in the browser console (the others are `daze`, `feast`, `rice`, `plane` and `reset`). The speech bubbles are in Chinese.
+
+[Full video: all six skits, about 50 seconds](docs/room-skits.mp4)
 
 ## What you can see
 

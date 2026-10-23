@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DiamondsFourIcon, FolderSimpleIcon, PlayCircleIcon, HourglassIcon, FileTextIcon, CaretRightIcon, XIcon, MinusIcon, PlusIcon, InfoIcon, MonitorIcon, PauseCircleIcon, ClockIcon, SquaresFourIcon, PowerIcon, ArrowClockwiseIcon } from '@phosphor-icons/react';
 import { AGENTS, FILTERS, parseSnapshot, snapshotRevision, flattenSnapshot, selectRows, countsFor, currentSummary, sourceState, axisLabel, timeLabel, agoLabel, runtimeFor, externalFor, sceneSummary, sceneActivity, sceneCounts, newDeliveryAgents } from './live-data.mjs';
+import { startSkits } from './room-skits.mjs';
 
 const ICONS = { running: PlayCircleIcon, activity: ClockIcon, queued: HourglassIcon, review: FileTextIcon, ended: PowerIcon, idle: PowerIcon, unbound: InfoIcon };
 const QUALITY = { Fresh: '刚刷新', Complete: '刚刷新', Partial: '部分可见', LastKnown: '上次记录', Conflicting: '记录有出入', Unavailable: '暂时读不到', Unknown: '未知' };
@@ -10,13 +11,17 @@ const ISSUE_LABELS = { scan_budget_exhausted: '这次还有记录未读完', sch
 const ROOM_CAST = [
   { key: 'gpt', name: 'GPT', agentId: 'codex', art: 'gpt-chibi', x: 19, bottom: 53, height: 41, ratio: .75, layer: 2, cue: [.74, .2] },
   { key: 'gemini', name: 'Gemini', art: 'gemini-chibi', x: 49, bottom: 54, height: 40, ratio: .75, layer: 2, cue: [.68, .22] },
-  { key: 'kimi', name: 'Kimi', art: 'kimi-chibi', x: 83, bottom: 41, height: 43, ratio: .75, layer: 4, cue: [.68, .08] },
+  { key: 'kimi', name: 'Kimi', art: 'kimi-chibi', x: 83, bottom: 41, height: 43, ratio: .75, layer: 4, cue: [.68, .08], walk: [-32], turn: true },
   { key: 'claude', name: 'Claude', agentId: 'claude', art: 'claude-chibi', x: 47, bottom: 28, height: 48, ratio: .75, layer: 4, cue: [.24, .13, 'left'] },
   { key: 'deepseek', name: 'DeepSeek', agentId: 'dsh', art: 'deepseek-chibi', x: 19, bottom: 9, height: 42, ratio: .889, layer: 8, cue: [.45, .06] },
   { key: 'grok', name: 'Grok', agentId: 'grok', art: 'grok-chibi', x: 81, bottom: 0, height: 48, ratio: .853, layer: 8, cue: [.66, .1] },
 ];
 // cue: where head-top state cues (typing dots, z's) attach, as fractions of the character box; 'left'
 // hangs them off the left of the head where the right side would sit on a neighbour.
+// walk: spots a cast member moves to and back from, as percent of its own width. Kimi strolls along the aisle
+// behind the table so the table keeps hiding her feet (past its right end they would float over the stool).
+// Only full-body standing art walks: the seated girls need standing poses first. turn: flip to face the way
+// she walks. A walking agent's status pin follows it.
 // Room pins hang off their character's box so they follow the cast at any window shape or zoom.
 // ax/ay are fractions of that box (0 = left/top edge, 1 = right/bottom), picked beside a head
 // where the art is transparent; side is where the tag sits from that point. align/above only
@@ -34,6 +39,7 @@ const SCENE_PINS = [
 ];
 // Small in-place actions for cast members that are neither working nor asleep (see data-idle in styles.css).
 const IDLE_ACTIONS = ['hop', 'look', 'wiggle', 'stretch', 'bounce'];
+const WALK_MS = 2000;
 
 function Badge({ tone = 'idle', children, small = false }) {
   const Icon = ICONS[tone] || InfoIcon;
@@ -87,7 +93,7 @@ function SceneAgentStatus({ agent, pin, hasFrame, selected, onSelect, inline = f
   const summary = sceneSummary(agent.runtime, agent.external, hasFrame);
   const cast = !inline && pin.side && ROOM_CAST.find(person => person.agentId === agent.id);
   const anchor = cast ? { '--c-x': cast.x, '--c-bottom': cast.bottom, '--c-h': cast.height, '--c-ratio': cast.ratio, '--a-x': pin.ax, '--a-y': pin.ay } : {};
-  return <div className={`scene-agent-pin ${pin.align}${pin.above ? ' opens-above' : ''}${cast ? ` anchored side-${pin.side}` : ''}${summary.state === 'closed' ? ' closed' : ''}${open ? ' expanded' : ''}${selected ? ' selected' : ''}${inline ? ' in-overview' : ''}`} style={{ ...anchor, '--pin-mobile-x': pin.mobileX + '%', '--pin-mobile-y': pin.mobileY + '%', '--pin-accent': agent.color }} onMouseEnter={() => setOpen(true)} onMouseLeave={event => { if (!event.currentTarget.contains(document.activeElement)) setOpen(false); }} onFocus={() => setOpen(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false); } }}>
+  return <div data-agent={agent.id} className={`scene-agent-pin ${pin.align}${pin.above ? ' opens-above' : ''}${cast ? ` anchored side-${pin.side}` : ''}${summary.state === 'closed' ? ' closed' : ''}${open ? ' expanded' : ''}${selected ? ' selected' : ''}${inline ? ' in-overview' : ''}`} style={{ ...anchor, '--pin-mobile-x': pin.mobileX + '%', '--pin-mobile-y': pin.mobileY + '%', '--pin-accent': agent.color }} onMouseEnter={() => setOpen(true)} onMouseLeave={event => { if (!event.currentTarget.contains(document.activeElement)) setOpen(false); }} onFocus={() => setOpen(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false); } }}>
     <button className={`scene-pin-button ${summary.tone}`} aria-expanded={open} aria-controls={`scene-details-${agent.id}`} aria-label={`${agent.name}：${summary.label}`} title={summary.label} onClick={() => { onSelect(agent); setOpen(true); }}><strong><span className="scene-state-dot" />{agent.id === 'grok' ? 'Grok' : agent.name}<CaretRightIcon /></strong><span className="scene-state-line"><b className={`scene-state-pill ${summary.state}`}>{summary.stateLabel}</b>{summary.meta && <small>{summary.meta}</small>}</span></button>
     {open && <div className="scene-pin-popover" id={`scene-details-${agent.id}`}><div className="scene-popover-card"><div className="scene-popover-title"><strong>{agent.name}</strong><button aria-label={`关闭 ${agent.name} 状态`} onClick={() => setOpen(false)}><XIcon /></button></div><section><h3><MonitorIcon />你打开的</h3><OpenedStatus runtime={agent.runtime} /></section><section><h3><FolderSimpleIcon />外部执行</h3><ExternalStatus external={agent.external} hasFrame={hasFrame} compact /></section><button className="scene-detail-link" onClick={() => { onSelect(agent); setOpen(false); }}>查看完整详情<CaretRightIcon /></button></div></div>}
   </div>;
@@ -141,7 +147,7 @@ export function App() {
     if (!motion || !pageVisible) return;
     let next, done;
     const act = () => {
-      const pool = [...(world.current?.querySelectorAll('.room-cast-member:not(.working):not(.sleeping):not(.delivered)') ?? [])];
+      const pool = [...(world.current?.querySelectorAll('.room-cast-member:not(.working):not(.sleeping):not(.delivered):not([data-walk]):not([data-skit])') ?? [])];
       const member = pool[Math.floor(Math.random() * pool.length)];
       if (member) {
         member.dataset.idle = IDLE_ACTIONS[Math.floor(Math.random() * IDLE_ACTIONS.length)];
@@ -152,6 +158,61 @@ export function App() {
     next = setTimeout(act, 1500 + Math.random() * 2500);
     const room = world.current;
     return () => { clearTimeout(next); clearTimeout(done); room?.querySelectorAll('[data-idle]').forEach(member => { delete member.dataset.idle; }); };
+  }, [motion, pageVisible]);
+  // Now and then a walker (Kimi) moves to one of its spots, lingers, and comes back; an agent's status
+  // pin would slide along with it. Also DOM-only; turning motion off or hiding the tab puts
+  // everyone straight back home.
+  useEffect(() => {
+    const walkers = ROOM_CAST.filter(person => person.walk);
+    if (!motion || !pageVisible || !walkers.length) return;
+    const timers = new Set();
+    const later = (run, ms) => { const id = setTimeout(() => { timers.delete(id); run(); }, ms); timers.add(id); };
+    const room = world.current, stage = room?.closest('.agent-room-stage');
+    const parts = person => [room?.querySelector(`.room-cast-member.${person.key}`),
+      person.agentId ? stage?.querySelector(`.scene-agent-pin[data-agent="${person.agentId}"]`) : null];
+    const set = (person, walk, x = 0, face = 1) => {
+      const [member, pin] = parts(person);
+      if (member && walk) {
+        member.dataset.walk = walk;
+        member.style.setProperty('--walk-x', x + '%');
+        member.style.setProperty('--walk-face', person.turn ? face : 1);
+      } else if (member) {
+        delete member.dataset.walk; delete member.dataset.idle;
+        member.style.removeProperty('--walk-x'); member.style.removeProperty('--walk-face');
+      }
+      if (pin && walk) { pin.dataset.walk = walk; pin.style.setProperty('--walk-dx', x / 100); }
+      else if (pin) { delete pin.dataset.walk; pin.style.removeProperty('--walk-dx'); }
+    };
+    // Agents get twice the turns of room companions: the room is mostly about them.
+    const turns = walkers.flatMap(person => person.agentId ? [person, person] : [person]);
+    const stroll = () => {
+      const person = turns[Math.floor(Math.random() * turns.length)];
+      const [member] = parts(person);
+      if (member && !member.matches('.working,.sleeping,.delivered,[data-idle],[data-walk],[data-skit]')) {
+        const to = person.walk[Math.floor(Math.random() * person.walk.length)];
+        // Kimi faces the way she walks (her art looks left by default), then the room while she lingers.
+        set(person, 'moving', to, to > 0 ? -1 : 1);
+        later(() => {
+          set(person, 'away', to);
+          if (Math.random() < .6) later(() => {
+            member.dataset.idle = IDLE_ACTIONS[Math.floor(Math.random() * IDLE_ACTIONS.length)];
+            later(() => { delete member.dataset.idle; }, 1900);
+          }, 800);
+          later(() => {
+            set(person, 'moving', 0, to > 0 ? 1 : -1);
+            later(() => set(person, null), WALK_MS);
+          }, 3500 + Math.random() * 3000);
+        }, WALK_MS);
+      }
+      later(stroll, 12000 + Math.random() * 13000);
+    };
+    later(stroll, 5000 + Math.random() * 5000);
+    return () => { timers.forEach(clearTimeout); walkers.forEach(person => set(person, null)); };
+  }, [motion, pageVisible]);
+  // Every half minute or so the AI girls play a little comic skit (room-skits.mjs); same motion boundaries.
+  useEffect(() => {
+    if (!motion || !pageVisible || !world.current) return;
+    return startSkits(world.current);
   }, [motion, pageVisible]);
   useEffect(() => {
     const onKey = event => {

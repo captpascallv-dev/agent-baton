@@ -262,6 +262,15 @@
 .motion-on .room-cast-member[data-idle=wiggle] .character-art{animation:idle-wiggle 1s ease-in-out}
 .motion-on .room-cast-member[data-idle=stretch] .character-art{animation:idle-stretch 1.6s ease-in-out}
 .motion-on .room-cast-member[data-idle=bounce] .character-art{animation:idle-bounce 1.2s ease-in-out}
+/* Walking: the individual translate property carries the whole member (art and head cues) and its status pin
+   by the same share of the member's width; scale turns only the art. Both compose with the breathing transform.
+   A stepping bob (a bigger hop for bots) plays only while moving. */
+.motion-on .room-cast-member[data-walk]{translate:var(--walk-x,0) 0;transition:translate 2s ease-in-out}
+.motion-on .room-cast-member[data-walk] .character-art{scale:var(--walk-face,1) 1;transition:scale .25s ease-in-out}
+.motion-on .room-cast-member[data-walk=moving] .character-art{animation:walk-bob .8s ease-in-out infinite}
+.motion-on .room-cast-member.bot-character[data-walk=moving] .character-art{animation:bot-hop .5s ease-in-out infinite}
+.motion-on .scene-agent-pin.anchored[data-walk]{translate:calc(var(--walk-dx,0) * var(--char-h) * var(--c-ratio) * var(--pin-zoom)) 0;transition:translate 2s ease-in-out}
+@media(max-width:600px){.motion-on .scene-agent-pin.anchored[data-walk]{translate:none}}
 .motion-on .room-cast-member.delivered .character-art{animation:idle-hop 1.1s ease-out 2}
 .motion-on .cast-work-glow{animation:work-light 1.6s ease-in-out infinite;animation-delay:var(--delay)}
 .motion-on .cast-typing i{animation:typing-dot 1.2s ease-in-out infinite}.motion-on .cast-typing i:nth-child(2){animation-delay:.18s}.motion-on .cast-typing i:nth-child(3){animation-delay:.36s}
@@ -285,6 +294,8 @@
 @keyframes idle-wiggle{0%,100%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65))}15%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) rotate(-4deg)}35%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) rotate(4deg)}55%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) rotate(-3deg)}75%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) rotate(2deg)}}
 @keyframes idle-stretch{0%,100%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65))}30%,55%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) scale(.96,1.07)}72%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) scale(1.04,.95)}86%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) scale(.995,1.01)}}
 @keyframes idle-bounce{0%,40%,80%,100%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65))}20%,60%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) translateY(-2.8%)}}
+@keyframes walk-bob{0%,50%,100%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65))}25%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) translateY(-2.4%) rotate(-1.6deg)}75%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) translateY(-2.4%) rotate(1.6deg)}}
+@keyframes bot-hop{0%,100%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) scale(1.06,.94)}45%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) translateY(-14%) scale(.96,1.05)}}
 @keyframes work-light{0%,100%{opacity:.35;transform:scale(.92)}50%{opacity:.95;transform:scale(1.08)}}
 @keyframes typing-dot{0%,60%,100%{opacity:.4;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
 @keyframes sleep-z{0%{opacity:0;transform:translate(0,8px) scale(.6)}25%{opacity:1}75%{opacity:.85}100%{opacity:0;transform:translate(12px,-16px) scale(1.15)}}
@@ -352,3 +363,123 @@
 .scene-agent-pin.anchored.closed .scene-pin-button .scene-state-line{margin-top:0}
 .scene-agent-pin.anchored.closed .scene-state-pill{padding:0}
 @media(max-width:600px){.scene-agent-pin.anchored{--pin-scale:.69}}
+
+/* Room skits (room-skits.mjs): comic overlays on top of the cast. Bubbles, props and the dust cloud live in
+   .room-skit-layer; face overlays live in .skit-face, a box over the art that shares the art's [data-act]
+   animation so they stay on the face. Everything is removed when the skit ends or motion stops. */
+.room-skit-layer{position:absolute;inset:0;z-index:12;pointer-events:none;overflow:visible}
+.skit-face{position:absolute;inset:0;pointer-events:none;transform-origin:50% 100%;z-index:2}
+.room-skit-layer>span,.skit-face>span,.skit-cloud>span{position:absolute;display:block;pointer-events:none;line-height:1.3}
+.room-skit-layer svg,.skit-face svg,.skit-cloud svg{display:block;width:100%;height:auto;overflow:visible}
+.skit-bubble{width:max-content;max-width:14em;padding:.42em .78em;border:2px solid #4c4153;border-radius:1.1em;background:#fffdf8;color:#3d3342;font-size:clamp(12px,1.02vw,21px);font-weight:700;letter-spacing:.01em;box-shadow:0 3px 0 #4c41531f;translate:-1.3em calc(-100% - .72em);transform-origin:1.3em calc(100% + .72em);animation:skit-pop .3s cubic-bezier(.3,1.6,.5,1) both}
+.skit-bubble:after{content:"";position:absolute;left:.85em;bottom:-.5em;width:.85em;height:.85em;background:inherit;border:solid #4c4153;border-width:0 2px 2px 0;rotate:45deg;border-radius:0 0 .2em 0}
+.skit-bubble.left{translate:calc(-100% + 1.3em) calc(-100% - .72em);transform-origin:calc(100% - 1.3em) calc(100% + .72em)}.skit-bubble.left:after{left:auto;right:.85em}
+.skit-bubble.up{translate:-50% calc(-100% - .72em);transform-origin:50% calc(100% + .72em)}.skit-bubble.up:after{left:calc(50% - .43em)}
+.skit-bubble.shout{border-width:3px;color:#c62f3a;font-size:clamp(14px,1.22vw,25px);rotate:-3deg;background:#fff9f4}.skit-bubble.shout:after{border-width:0 3px 3px 0}
+.skit-bubble.dream{border-color:#9a8bb5;border-radius:1.8em;background:#f8f5ff;color:#6b5a8a;font-weight:600;box-shadow:none;display:flex;align-items:center;gap:.4em}
+.skit-bubble.dream:after{left:.3em;bottom:-.95em;width:.55em;height:.55em;border:2px solid #9a8bb5;border-radius:50%;rotate:none;box-shadow:-.55em .5em 0 -.12em #f8f5ff,-.55em .5em 0 -.02em #9a8bb5}
+.skit-bubble.up.dream:after{left:calc(50% - .3em)}
+.skit-dream-basin{display:inline-block;width:2.6em}
+.skit-bubble.note{border-color:#c8b27a;border-radius:.3em;background:#fffbea;color:#6a5524;font-weight:600;rotate:-2deg}.skit-bubble.note:after{border-color:#c8b27a}
+.skit-bubble.out,.skit-mark.out{animation:skit-fade .28s ease-in forwards}
+.skit-mark{translate:-50% -50%;color:#5b4f68;font-size:clamp(20px,1.9vw,38px);font-weight:900;text-shadow:0 0 3px #fff,0 0 6px #fff,0 0 2px #fff;animation:skit-float 1.4s ease-out forwards;white-space:nowrap}
+.skit-mark.small{font-size:clamp(14px,1.25vw,25px)}
+.skit-impact{translate:-50% -50%;color:#ffd84a;font-size:clamp(18px,1.8vw,36px);font-weight:900;line-height:1;-webkit-text-stroke:2px #3f2f45;paint-order:stroke fill;text-shadow:0 2px 0 #3f2f45;white-space:nowrap;animation:skit-impact .55s cubic-bezier(.3,1.7,.5,1) both}
+.skit-star{translate:-50% -50%;color:#ffd84a;font-size:clamp(16px,1.5vw,30px);-webkit-text-stroke:1.5px #3f2f45;animation:skit-impact .5s both}
+.skit-heart{translate:-50% -50%;color:#ff7b9c;font-size:clamp(14px,1.3vw,26px);font-weight:900;text-shadow:0 0 3px #fff;animation:skit-float 1.6s ease-out forwards}
+.skit-blank{translate:-50% -50%;border-radius:50%;background:#fff;border:2px solid #6d6474;box-shadow:inset 0 -2px 0 #ece7f1;animation:skit-in .35s ease-out both}
+.skit-drool{width:3.4%;translate:-50% 0;transform-origin:50% 0;animation:skit-drool 2.2s ease-in-out infinite}
+.skit-blush{width:9%;height:3.4%;translate:-50% -50%;border-radius:50%;background:radial-gradient(closest-side,#ff8fa3c0,#ff8fa300);animation:skit-in .5s ease-out both}
+.skit-anger{width:10%;translate:-50% -50%;animation:skit-throb .45s ease-in-out infinite alternate}
+.skit-plaster{width:12%;aspect-ratio:2.5;translate:-50% -50%;animation:skit-in .3s ease-out both}.skit-plaster svg{position:absolute;inset:0;margin:auto;rotate:32deg}.skit-plaster svg+svg{rotate:-32deg}
+.skit-sweat{width:5%;translate:-50% -50%;animation:skit-sweat 1.3s ease-in infinite}
+.skit-basin{width:42%;translate:-50% -50%;animation:skit-pop .32s cubic-bezier(.3,1.6,.5,1) both}.skit-basin.out{animation:skit-fade .3s ease-in forwards}
+.skit-grain{width:3.2%;aspect-ratio:1.8;translate:-50% -50%;border-radius:50%;background:#fffdf5;border:1px solid #cfc6b4;animation:skit-grain .75s ease-out forwards}
+.skit-grain.loose{width:1.1%;animation:none;box-shadow:0 0 0 2px #fff8}
+.skit-throw{width:3.4%;translate:-50% -50%}.skit-plane{width:4.2%;translate:-50% -50%}.skit-plane.out{opacity:0;transition:opacity .3s}
+.skit-dizzy{width:40%;height:8%;translate:-50% -50%}.skit-dizzy i{position:absolute;left:50%;top:50%;color:#ffd84a;font-style:normal;font-size:clamp(18px,1.7vw,34px);-webkit-text-stroke:1.5px #3f2f45;animation:skit-orbit 1.4s linear infinite}.skit-dizzy i:nth-child(2){animation-delay:-.47s}.skit-dizzy i:nth-child(3){animation-delay:-.93s}
+.skit-cloud{width:25%;aspect-ratio:220/160;translate:-50% -50%;animation:skit-cloud-in .35s cubic-bezier(.3,1.6,.5,1) both,skit-cloud .32s ease-in-out .35s infinite alternate}
+.skit-cloud>svg{position:absolute;inset:0;height:100%}
+.skit-cloud.out{animation:skit-poof .4s ease-out forwards}
+.skit-head{width:34%;aspect-ratio:1;left:12%;top:22%;border-radius:50%;border:3px solid #4c4153;background-color:#fff;background-repeat:no-repeat;animation:skit-tumble-a .9s ease-in-out infinite}
+.skit-head.second{left:52%;top:30%;animation-name:skit-tumble-b;animation-duration:.8s}
+.skit-tail{width:19%;right:6%;top:15%;transform-origin:50% 100%;animation:skit-flick .3s ease-in-out infinite alternate}
+.skit-cloud-star{left:calc(8% + var(--i) * 16%);top:calc(70% - var(--i) * 9%);color:#ffd84a;font-size:clamp(12px,1.1vw,22px);-webkit-text-stroke:1.5px #3f2f45;animation:skit-spark .6s ease-out infinite;animation-delay:calc(var(--i) * -.1s)}
+.skit-cards{width:7%;aspect-ratio:1.45;translate:-50% -50%;animation:skit-pop .3s cubic-bezier(.3,1.6,.5,1) both}.skit-cards.out{animation:skit-fade .3s ease-in forwards}
+.skit-cards i{position:absolute;inset:0;display:grid;place-items:center;border:2px solid #6f58a8;border-radius:12%;background:linear-gradient(135deg,#b9a3ee,#8f75d6);color:#fff;font:900 clamp(8px,.62vw,13px)/1 sans-serif;font-style:normal;letter-spacing:.06em;box-shadow:0 2px 0 #6f58a855}
+.skit-cards i:nth-child(1){rotate:-9deg;translate:-6% 4%}.skit-cards i:nth-child(2){rotate:-3deg}.skit-cards i:nth-child(3){rotate:4deg;translate:4% -4%}.skit-cards i:nth-child(4){rotate:8deg;translate:8% -8%}
+.skit-cards i.done{animation:skit-card-off .5s ease-in forwards}
+.skit-stamp{position:absolute;left:50%;top:50%;padding:.15em .35em;border:3px solid #d6404b;border-radius:.25em;color:#d6404b;background:#fff4;font-size:clamp(11px,.95vw,19px);font-weight:900;white-space:nowrap;translate:-50% -50%;animation:skit-stamp .5s ease-in both}
+.skit-bubble .skit-hash{display:block;margin-top:.2em;font:700 .62em/1.25 Consolas,ui-monospace,monospace;color:#8a7f95;letter-spacing:.02em;white-space:nowrap}
+.skit-spicy{width:6.6%;aspect-ratio:1.3;translate:-50% -100%;border:2px solid #4c4153;border-radius:.45em;background:#2d2433;box-shadow:0 0 0 2px #fff8,0 0 16px #ff6f9a99;transform-origin:50% 100%;animation:skit-pop .3s cubic-bezier(.3,1.6,.5,1) both}
+.skit-spicy.shut{animation:skit-shut .22s ease-in forwards}
+.skit-mosaic{position:absolute;inset:9%;display:grid;grid-template-columns:repeat(4,1fr);border-radius:.2em;overflow:hidden}
+.skit-mosaic b{background:#f2a7b9}.skit-mosaic b:nth-child(3n){background:#e47c97}.skit-mosaic b:nth-child(4n+2){background:#fcd3c6}.skit-mosaic b:nth-child(5n+1){background:#c95b7c}
+.skit-mosaic b:nth-child(odd){animation:skit-flicker .5s steps(1) infinite}.skit-mosaic b:nth-child(3n+1){animation-delay:-.25s}
+.skit-chili{position:absolute;width:42%;right:-20%;top:-28%;rotate:18deg;animation:skit-throb .45s ease-in-out infinite alternate}
+.skit-spicy em{position:absolute;left:50%;bottom:-.25em;translate:-50% 100%;padding:.15em .45em;border-radius:.25em;background:#d6404b;color:#fff;font:900 clamp(9px,.72vw,15px)/1 sans-serif;font-style:normal;white-space:nowrap}
+.motion-on .room-cast-member[data-skit=gone]{opacity:0;transition:opacity .25s}
+.motion-on .room-cast-member[data-skit=gone] .character-art{scale:.75;transition:scale .25s ease-in}
+.motion-on .room-cast-member[data-skit=back] .character-art{animation:skit-return .45s cubic-bezier(.3,1.5,.5,1)}
+.motion-on .room-cast-member[data-act=still] :is(.character-art,.skit-face){animation:cast-breathe 4.6s ease-in-out infinite}
+.motion-on .room-cast-member[data-act=eat] :is(.character-art,.skit-face){animation:skit-eat .3s ease-in-out infinite}
+.motion-on .room-cast-member[data-act=daze] :is(.character-art,.skit-face){animation:skit-daze 2.6s ease-in-out infinite}
+.motion-on .room-cast-member[data-act=shake] :is(.character-art,.skit-face){animation:skit-shake .16s linear infinite}
+.motion-on .room-cast-member[data-act=bonk] :is(.character-art,.skit-face){animation:skit-bonk .6s ease-out}
+.motion-on .room-cast-member[data-act=whistle] :is(.character-art,.skit-face){animation:idle-look 1.8s ease-in-out infinite}
+.motion-on .room-cast-member[data-act=cheer] .character-art{animation:bot-hop .45s ease-in-out infinite}
+@media(max-width:600px){.skit-bubble{font-size:11px;max-width:10em}.skit-bubble.shout{font-size:12px}.skit-mark,.skit-impact{font-size:16px}}
+@keyframes skit-pop{0%{transform:scale(.3);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes skit-fade{to{opacity:0;transform:scale(.85)}}
+@keyframes skit-shut{to{transform:scaleY(0);opacity:0}}
+@keyframes skit-flicker{50%{filter:brightness(1.22)}}
+@keyframes skit-in{from{opacity:0}to{opacity:1}}
+@keyframes skit-float{0%{opacity:0;transform:translateY(30%) scale(.6)}20%{opacity:1;transform:translateY(0) scale(1.1)}80%{opacity:1}100%{opacity:0;transform:translateY(-90%) scale(1)}}
+@keyframes skit-impact{0%{opacity:0;transform:scale(.2)}60%{opacity:1;transform:scale(1.25)}100%{opacity:1;transform:scale(1)}}
+@keyframes skit-drool{0%,100%{transform:scaleY(.55)}50%{transform:scaleY(1.15)}}
+@keyframes skit-throb{from{transform:scale(.88)}to{transform:scale(1.12)}}
+@keyframes skit-sweat{0%{transform:translateY(-20%);opacity:0}20%{opacity:1}100%{transform:translateY(60%);opacity:0}}
+@keyframes skit-grain{0%{transform:translate(0,0) rotate(0);opacity:1}100%{transform:translate(var(--dx),var(--dy)) rotate(260deg);opacity:0}}
+@keyframes skit-orbit{0%{transform:translate(-50%,-50%) translate(-140%,0) scale(.8)}25%{transform:translate(-50%,-50%) translate(0,60%) scale(1.15)}50%{transform:translate(-50%,-50%) translate(140%,0) scale(.8)}75%{transform:translate(-50%,-50%) translate(0,-60%) scale(.6)}100%{transform:translate(-50%,-50%) translate(-140%,0) scale(.8)}}
+@keyframes skit-cloud-in{0%{transform:scale(.2);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes skit-cloud{0%{transform:scale(.97,1.03) rotate(-2deg)}100%{transform:scale(1.04,.97) rotate(2deg)}}
+@keyframes skit-poof{0%{transform:scale(1);opacity:1}100%{transform:scale(1.35);opacity:0}}
+@keyframes skit-tumble-a{0%{transform:translate(0,0) rotate(-12deg)}33%{transform:translate(45%,-18%) rotate(20deg)}66%{transform:translate(20%,22%) rotate(-30deg)}100%{transform:translate(0,0) rotate(-12deg)}}
+@keyframes skit-tumble-b{0%{transform:translate(0,0) rotate(15deg)}33%{transform:translate(-40%,16%) rotate(-25deg)}66%{transform:translate(-15%,-24%) rotate(30deg)}100%{transform:translate(0,0) rotate(15deg)}}
+@keyframes skit-flick{from{transform:rotate(-25deg)}to{transform:rotate(25deg)}}
+@keyframes skit-spark{0%{transform:scale(.3);opacity:0}40%{transform:scale(1.2);opacity:1}100%{transform:scale(.6) translateY(-40%);opacity:0}}
+@keyframes skit-card-off{to{transform:translate(160%,-60%) rotate(35deg);opacity:0}}
+@keyframes skit-stamp{0%{transform:scale(2.2);opacity:0}45%{transform:scale(.92);opacity:1}60%{transform:scale(1.04)}100%{transform:scale(1);opacity:1}}
+@keyframes skit-return{0%{opacity:0;scale:.7}60%{scale:1.06}100%{opacity:1;scale:1}}
+@keyframes skit-eat{0%,100%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65))}50%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) translateY(1.6%) rotate(1.4deg)}}
+@keyframes skit-daze{0%,100%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) rotate(0)}50%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) translateX(-.6%) rotate(-2.6deg)}}
+@keyframes skit-shake{0%,100%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65))}25%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) translateX(-1.1%) rotate(-.9deg)}75%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) translateX(1.1%) rotate(.9deg)}}
+@keyframes skit-bonk{0%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65))}25%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) scale(1.07,.88)}55%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65)) scale(.97,1.05)}100%{transform:translate(calc(var(--px)*.65),calc(var(--py)*.65))}}
+
+/* Standing art (room-skits.mjs STAND): a seated girl gets up, walks or runs about and sits down again.
+   Claude and GPT stand in .room-skit-layer.back, under the table cut-out, so the table still hides Claude's
+   legs; DeepSeek stands in the main layer. Overlays sit inside the stand box and move with it. */
+.room-skit-layer.back{z-index:4}
+.skit-stand{translate:-50% 0;aspect-ratio:2/3;transform-origin:50% 100%;animation:skit-sway 2.4s ease-in-out infinite}
+.skit-stand>img{display:block;width:100%;height:100%}
+.skit-stand.flip>img{scale:-1 1}
+.skit-stand>span{position:absolute;display:block;pointer-events:none;line-height:1.3}
+.skit-stand.pop{animation:skit-standup .4s cubic-bezier(.3,1.6,.5,1)}
+.skit-stand.walk{animation:skit-walk .5s ease-in-out infinite}
+.skit-stand.run{animation:skit-run .3s ease-in-out infinite}.skit-stand.flip.run{animation-name:skit-run-back}
+.skit-stand.stagger{animation:skit-stagger .55s ease-in-out infinite}
+.skit-stand.daze{animation:skit-wobble 2.2s ease-in-out infinite}
+.skit-stand.shake{animation:skit-jitter .16s linear infinite}
+.skit-stand.bonk{animation:skit-squash .6s ease-out}
+.skit-stand.hide{opacity:0;transition:opacity .2s}
+.skit-stand>.skit-dizzy{width:46%;height:6%}
+.skit-puff{width:9%;aspect-ratio:220/160;translate:-50% -50%;animation:skit-poof .55s ease-out forwards}
+@keyframes skit-sway{0%,100%{transform:rotate(-1deg)}50%{transform:rotate(1deg) scale(1,1.01)}}
+@keyframes skit-standup{0%{transform:scale(1.1,.6);opacity:.4}100%{transform:scale(1);opacity:1}}
+@keyframes skit-walk{0%,100%{transform:translateY(0) rotate(-1.5deg)}50%{transform:translateY(-2.5%) rotate(1.5deg)}}
+@keyframes skit-run{0%,100%{transform:translateY(0) rotate(5deg)}50%{transform:translateY(-4%) rotate(8deg)}}
+@keyframes skit-run-back{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-4%) rotate(-8deg)}}
+@keyframes skit-stagger{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg) translateY(-1.5%)}}
+@keyframes skit-wobble{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg) translateY(-1%)}}
+@keyframes skit-jitter{0%,100%{transform:none}25%{transform:translateX(-2%) rotate(-1deg)}75%{transform:translateX(2%) rotate(1deg)}}
+@keyframes skit-squash{0%,100%{transform:none}25%{transform:scale(1.07,.88)}55%{transform:scale(.97,1.05)}}
