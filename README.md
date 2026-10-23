@@ -49,7 +49,7 @@ Kimi 偶尔会沿桌子后面的过道走到黑板前，停一会儿再走回来
 
 小剧场只是逗趣，不代表谁的状态：状态标签照常显示真实情况，演完马上恢复原样；角色睡着时，会换成睡着也演得通的版本。动态关掉时不演。想马上看某一段，在浏览器控制台输入 `studioSkit('brawl')`（另外几段是 `daze`、`feast`、`rice`、`plane`、`reset`）。
 
-[完整视频：六段连播，约 50 秒](docs/room-skits.mp4)
+[完整视频：小剧场与散步合集，约 1 分 40 秒](docs/room-skits.mp4)
 
 ## 能看到什么
 
@@ -192,7 +192,7 @@ Kimi now and then strolls along the aisle to the blackboard and back.
 
 Skits are just for fun and never stand for anyone's status: the tags keep showing the real state, and everyone goes back to her real look the moment a skit ends. A sleeping character gets a version that works while she sleeps. Nothing plays with motion off. To see one right away, type `studioSkit('brawl')` in the browser console (the others are `daze`, `feast`, `rice`, `plane` and `reset`). The speech bubbles are in Chinese.
 
-[Full video: all six skits, about 50 seconds](docs/room-skits.mp4)
+[Full video: skits and strolls, about 1 minute 40 seconds](docs/room-skits.mp4)
 
 ## What you can see
 
