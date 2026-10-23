@@ -1,0 +1,9 @@
+{
+  "port": 4173,
+  "cliWatchRuntimeDirectory": "C:/REPLACE/CLIWatch-0.1.0-win-x64",
+  "cliWatchConfig": "C:/REPLACE/CLIWatch-0.1.0-win-x64/config/default.json",
+  "bridgeExecutable": "C:/REPLACE/ai-moe-studio/bridge/bin/Release/net8.0-windows/AiMoeStudio.Bridge.exe",
+  "snapshotPath": "C:/REPLACE/ai-moe-studio-state/snapshot.json",
+  "refreshSeconds": 5,
+  "staleAfterSeconds": 60
+}
