@@ -70,6 +70,7 @@ Kimi 偶尔会沿桌子后面的过道走到黑板前，停一会儿再走回来
 | 来源 | 看得到 | 看不到 |
 | --- | --- | --- |
 | Codex App | 窗口数、已加载的本机对话、运行 / 休眠、当前轮用的模型 | 对话内容 |
+| Codex CLI（可选） | 配置兼容的任务启动记录与原生状态库后，当前外部任务的运行 / 结束 | 当前模型；暂只验证 Codex 0.162.0 的 headless exec，其他版本显示未知 |
 | DSH（DeepSeek 桌面版） | 装上 `integrations/dsh-status-plugin/` 插件后，已加载会话的运行 / 休眠和当前请求的模型 | 没加载的会话 |
 | Claude Code | 装上 `integrations/claude-code-hooks` 后，Claude Code 会话的运行 / 休眠和当前模型 | 没装时只知道窗口开着；对话内容始终不进页面 |
 | Grok Bot | 窗口开没开；没有房间形象，状态在顶栏 | 是否正在生成，所以显示“未知” |
@@ -132,9 +133,15 @@ powershell -NoProfile -File .\Start-Studio.ps1
 
 只看演示、不接本机状态时，用 `Start-Studio.ps1 -Demo`。
 
+### 长会话与后台采集
+
+Codex App 首次接入长会话时逐个读取状态，之后复用增量；超过读取上限会暂停重连，避免反复让 Codex 序列化同一段历史。桥接在每轮采集中复用查找索引与读取缓冲，继续读取当前文件和进程状态。一次本机部署采样中，桥接 CPU 从约 62% 单核降至 25%；这是该机器的实测，开销仍取决于任务记录数量。
+
+需要显示兼容的 Codex CLI 外部任务运行状态时，按[可选接入说明](docs/codex-cli-runtime.md)同时配置 `codexCliStateRoot` 和 `codexCliHome`；默认关闭。
+
 ## 授权
 
-- **代码**：[MIT](LICENSE)。
+- **代码**：[MIT](LICENSE)；`bridge/collection/` 中来自 CLI Watch 的采集组件及其修改遵循 [MPL-2.0](bridge/collection/LICENSE)，来源与改动见[组件说明](bridge/collection/README.md)。
 - **美术素材**（房间背景、角色 Q 版与立绘、效果图和动图）：[CC BY-NC-SA 4.0](ASSETS-LICENSE.md)。**仅限非商业使用**；转载或改编请保留原作者署名、注明修改，并以相同协议共享。
 
 本项目是**非商用开源**的同人作品，全程署名原作者。所有角色都是非官方形象，与 OpenAI、Anthropic、Google、Moonshot AI、xAI、DeepSeek **没有任何隶属或背书关系**；各品牌名称归各自所有者。
@@ -213,6 +220,7 @@ It is a **read-only window**: it never dispatches, retries or ends anything, and
 | Source | What it sees | What it doesn't |
 | --- | --- | --- |
 | Codex App | window count, loaded local conversations, running / sleeping, the current turn's model | conversation content |
+| Codex CLI (optional) | running / completed state for current external jobs, when compatible launcher records and native databases are configured | current model; headless exec is verified only for Codex 0.162.0, other versions stay unknown |
 | DSH (DeepSeek desktop) | with the `integrations/dsh-status-plugin/` plugin: running / sleeping and the requested model of loaded sessions | sessions that aren't loaded |
 | Claude Code | with `integrations/claude-code-hooks` installed: whether a Claude Code session is running or sleeping, and its current model | without the hook, only that a window is open; conversation content never reaches the page |
 | Grok Bot | whether the window is open; no figure in the room, status in the top bar | whether it is generating, so it shows "unknown" |
@@ -275,9 +283,15 @@ Your browser opens the address in that config, <http://127.0.0.1:4173/> by defau
 
 For the demo without local status, run `Start-Studio.ps1 -Demo`.
 
+### Long conversations and collection cost
+
+Codex App initial snapshots are read one at a time, then updated incrementally. A frame beyond the read limit pauses reconnects, avoiding repeated serialization of the same history. The bridge reuses lookup indexes and read buffers within each collection while continuing to read current files and process state. One local deployment sample dropped bridge CPU from about 62% of one core to 25%; cost still depends on the number of task records.
+
+To show running state for compatible external Codex CLI jobs, set both `codexCliStateRoot` and `codexCliHome` using the [optional adapter guide](docs/codex-cli-runtime.md). The adapter is off by default.
+
 ## License
 
-- **Code**: [MIT](LICENSE).
+- **Code**: [MIT](LICENSE), except the CLI Watch collector sources and modifications in `bridge/collection/`, which retain [MPL-2.0](bridge/collection/LICENSE). See the [component provenance](bridge/collection/README.md).
 - **Art assets** (room, chibi sprites, portraits, screenshots and the animated preview): [CC BY-NC-SA 4.0](ASSETS-LICENSE.md). **Non-commercial use only**; keep the original credits, mark your changes, and share alike.
 
 This is a **non-commercial** fan project that credits every original creator. All characters are unofficial, with **no affiliation with or endorsement by** OpenAI, Anthropic, Google, Moonshot AI, xAI or DeepSeek. Brand names belong to their owners.

@@ -27,8 +27,8 @@ function encode(value) {
   const data = Buffer.from(JSON.stringify(value)), header = Buffer.alloc(4);
   header.writeUInt32LE(data.length); return Buffer.concat([header, data]);
 }
-function fakeTransport(snapshots = {}, unanswered = new Set()) {
-  const messages = [], connections = [];
+function fakeTransport(snapshots = {}, unanswered = new Set(), heldSnapshots = new Set()) {
+  const messages = [], connections = [], held = new Map();
   function createConnection(address) {
     const socket = new EventEmitter(); socket.destroyed = false;
     const connection = { address, ended: false }; connections.push(connection);
@@ -49,11 +49,15 @@ function fakeTransport(snapshots = {}, unanswered = new Set()) {
       }
       if (address === ipc.path && message.method === "thread-stream-following-changed" && message.params.following) {
         const state = snapshots[message.params.conversationId];
-        if (state) emit({ type: "broadcast", method: "thread-stream-state-changed", version: 11,
+        const publish = () => emit({ type: "broadcast", method: "thread-stream-state-changed", version: 11,
           sourceClientId: `owner:${message.params.conversationId}`, targetClientIds: ["observer-client"], params: {
             conversationId: message.params.conversationId, hostId: "local",
             change: { type: "snapshot", revision: 1, conversationState: state },
           } });
+        if (state) {
+          if (heldSnapshots.has(message.params.conversationId)) held.set(message.params.conversationId, publish);
+          else publish();
+        }
       }
       return true;
     };
@@ -61,7 +65,7 @@ function fakeTransport(snapshots = {}, unanswered = new Set()) {
     socket.destroy = () => { if (!socket.destroyed) { socket.destroyed = true; socket.emit("close"); } };
     queueMicrotask(() => socket.emit("connect")); return socket;
   }
-  return { createConnection, messages, connections };
+  return { createConnection, messages, connections, releaseSnapshot(id) { const release = held.get(id); held.delete(id); release?.(); } };
 }
 
 test("generation/tool execution count as running; both kinds of human wait count as idle", async () => {
@@ -240,13 +244,13 @@ function incrementalHarness(options = {}) {
   return h;
 }
 
-test("long snapshot: stream over 16MiB, retain only active metadata, reuse owner without another snapshot", async () => {
-  const h = incrementalHarness({ largeBytes: 36 * 1024 * 1024 });
+test("long snapshot: stream a 96MiB conversation, retain only active metadata, reuse owner without another snapshot", async () => {
+  const h = incrementalHarness({ largeBytes: 96 * 1024 * 1024 });
   const observer = new CodexIpcObserver(ipc, { createConnection: h.createConnection, now: () => NOW });
   try {
     const first = await observer.collect([ids[0]]);
     assert.equal(first.complete, true); assert.equal(first.threads[0].model, "gpt-6.1-sol");
-    assert.ok(first.stats.largestFrameBytes > 16 * 1024 * 1024);
+    assert.ok(first.stats.largestFrameBytes > 96 * 1024 * 1024);
     assert.ok(first.stats.selectedBytes < 16 * 1024); assert.ok(first.stats.peakTokenBytes <= 512);
     const retained = JSON.stringify([...observer.states.values()]);
     assert.ok(retained.length < 2_000); assert.equal(retained.includes("private"), false); assert.equal(retained.includes("old-model"), false);
@@ -257,6 +261,29 @@ test("long snapshot: stream over 16MiB, retain only active metadata, reuse owner
     assert.equal(h.sent.filter(x => x.params?.following === true).length, 1);
   } finally { observer.dispose(); }
   assert.equal(h.sent.filter(x => x.params?.following === false).length, 1);
+});
+
+test("initial snapshots: confirm owners before large reads and serialize each initial snapshot", async () => {
+  const state = { threadRuntimeStatus: { type: "active", activeFlags: [] },
+    turns: [{ status: "inProgress", params: { model: "gpt-6.1-sol" } }] };
+  const transport = fakeTransport({ [ids[0]]: state, [ids[1]]: state }, new Set(), new Set([ids[0], ids[1]]));
+  const observer = new CodexIpcObserver(ipc, { createConnection: transport.createConnection, ownerTimeoutMs: 10 });
+  const followed = () => transport.messages.map(x => x.message).filter(x => x.params?.following === true).map(x => x.params.conversationId);
+  try {
+    const pending = observer.collect(ids, { timeoutMs: 150 });
+    await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal(observer.diagnostics().pendingOwnerQueries, 0, "slow snapshots must not hold up owner replies");
+    assert.equal(observer.diagnostics().unconfirmedOwners, 0);
+    assert.deepEqual(followed(), [ids[0]], "do not serialize every long conversation at once");
+    transport.releaseSnapshot(ids[0]);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.deepEqual(followed(), [ids[0], ids[1]]);
+    assert.equal(observer.snapshot().threads.length, 1);
+    transport.releaseSnapshot(ids[1]);
+    assert.equal((await pending).complete, true);
+    assert.equal((await observer.collect(ids)).threads.length, 2);
+    assert.deepEqual(followed(), [ids[0], ids[1]], "refresh reuses both baselines");
+  } finally { observer.dispose(); }
 });
 
 test("incremental lifecycle: apply state/model patches, reject revision gaps, resync once on next refresh", async () => {
@@ -309,12 +336,19 @@ test("incremental lifecycle: disposing an in-flight read resolves it and closes 
 });
 
 test("incremental lifecycle: explicit frame limit and disconnect invalidate previous metadata", async () => {
-  const limit = 64 * 1024 * 1024 + 1;
+  const limit = 256 * 1024 * 1024 + 1;
   const h = incrementalHarness({ rejectedFrameBytes: limit });
   const observer = new CodexIpcObserver(ipc, { createConnection: h.createConnection });
   const rejected = await observer.collect([ids[0]]);
   assert.equal(rejected.complete, false); assert.equal(rejected.phase, "frame_limit");
   assert.equal(rejected.stats.rejectedFrameBytes, limit); assert.equal(rejected.stats.largestFrameBytes, limit);
+  for (let refresh = 0; refresh < 5; refresh++) {
+    const stopped = await observer.collect([ids[0]]);
+    assert.equal(stopped.phase, "frame_limit");
+    assert.equal(stopped.threads.length, 0);
+  }
+  assert.equal(h.sockets.length, 1, "polling must not reconnect after an oversized frame");
+  assert.equal(h.snapshotSends, 1, "desktop must not resend the same oversized conversation");
   observer.dispose();
   const connected = incrementalHarness(), second = new CodexIpcObserver(ipc, { createConnection: connected.createConnection });
   await second.collect([ids[0]]); connected.socket.destroy();

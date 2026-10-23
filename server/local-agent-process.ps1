@@ -45,6 +45,10 @@ foreach ($process in $all) {
   elseif ($name -match '^(?i:cursor-agent|agent)\.exe$' -and $exe -match '/cursor-agent/|/\.cursor/') { $agent = 'cursor' }
   elseif ($name -match '^(?i:opencode)\.exe$') { $agent = 'opencode' }
   elseif ($name -match '^(?i:pi)\.exe$') { $agent = 'pi' }
+  elseif ($name -ieq 'codex.exe' -and $command -match '^\s*(?:"[^"\r\n]*codex\.exe"|[^"\s]*codex\.exe)\s+exec(?:\s|$)') {
+    # Only native headless exec; App/app-server instances keep their own observer.
+    $agent = 'codex'
+  }
   elseif ($name -match '^(?i:node|bun)\.exe$') {
     # Only package-entry identifiers are inspected; argument text never leaves this process.
     if ($command -match '/(?:@earendil-works|@mariozechner)/pi-coding-agent/(?:dist|bin)/') { $agent = 'pi' }

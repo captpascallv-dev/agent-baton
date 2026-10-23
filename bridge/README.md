@@ -15,7 +15,7 @@
 
 会编译的人也可以用 agent-baton 源码里的 `Build-CliWatch.ps1` 自己构建，把构建输出目录当作上面的解压文件夹。
 
-产物：bridge/bin/Release/net8.0-windows/AiMoeStudio.Bridge.exe。文件引用复制公开版六个组件：`CliWatch.App`、`CliWatch.Contracts`、`CliWatch.Collection`、`CliWatch.Normalization`、`CliWatch.Projection`、`CliWatch.Views`。无需重新编译或改动 CLI Watch。
+产物：bridge/bin/Release/net8.0-windows/AiMoeStudio.Bridge.exe。构建引用公开版的五个组件：`CliWatch.App`、`CliWatch.Contracts`、`CliWatch.Normalization`、`CliWatch.Projection`、`CliWatch.Views`，并从本仓库 `bridge/collection/` 编译桥接专用的 `CliWatch.Collection.dll`。不需要另取 CLI Watch 源码或重新构建它；来源与 MPL-2.0 许可见 [collection/README.md](collection/README.md)。保留下载解压目录作为独立输入，桥接构建输出与它分开。
 
 用 config.example.json 的字段建立外置配置，运行：
 
@@ -60,12 +60,21 @@ source 的状态含义：
 
 缺链接、错轮次、来源/进程身份冲突、多目标或多槽争同一原生轮次时保持分开。长期循环只缓存明确身份模板以跨越预算轮换；没有复用上一帧的存活进程或交卷事实，也没有额外读取私信或业务文件。
 
+采集组件的性能优化只复用同一轮内的文档索引、进程分类、Grok 会话目录名索引和有界读取缓冲。每轮仍读取来源文件、PID/启动时间与活动计数；不跨轮缓存文件内容或运行/休眠状态，原完成后等待 5 秒的刷新间隔保持。
+
 身份合并的自检：
 
     AiMoeStudio.Bridge.exe --identity-self-test
 
     AiMoeStudio.Bridge.exe --self-test
     node --test tests/live-server.test.mjs
+
+采集性能改动的定向检查使用合成夹具，覆盖新增/更改/删除、半写/读取失败恢复、同 key 跨根、进程退出/PID 复用、Grok 目录刷新及字节预算。使用同一 CLI Watch 0.1.0 解压目录构建，给测试传入一个专用的新夹具目录：
+
+    dotnet build bridge/tests/CollectorBoundaryTests.csproj -c Release -m:1 -p:UseSharedCompilation=false -p:CliWatchRuntimeDirectory="<CLI Watch 0.1.0 解压目录>" -o "<独立测试输出目录>"
+    <独立测试输出目录>/CollectorBoundaryTests.exe "<专用的新夹具目录>"
+
+在构建命令加 `-p:UseInstalledCollector=true` 可让同一组检查改用下载包里的原采集 DLL。检查时为进程设置 2GB 内存上限；夹具不使用真实聊天或运行配置。
 
 self-test 使用内存夹具验证运行、明确等待、交卷未验收、未知、当前/历史、私密字段剔除、上一帧复用、失败/重启保留时间与损坏配置；Node 测试验证静态/API、缺失与过期、只读来源和路径边界、并发不重复启动。跑 Node 测试时请自行加上内存上限。
 

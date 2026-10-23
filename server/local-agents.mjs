@@ -11,7 +11,7 @@ const agentIds = ['dsh', 'grok-bot', 'claude', 'grok', 'cursor', 'pi', 'opencode
 const helperPath = fileURLToPath(new URL('./local-agent-process.ps1', import.meta.url));
 const opaqueId = value => createHmac('sha256', salt).update(String(value)).digest('hex').slice(0, 20);
 
-async function readProcessSnapshot() {
+export async function readProcessSnapshot() {
   if (process.platform !== 'win32') return { available: false };
   try {
     const { stdout } = await run('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', helperPath],

@@ -3,7 +3,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
-import { AgentRuntimeStore } from "./agent-runtime-store.mjs";
+import { AgentRuntimeStore, codexCliCandidates, applyCodexCliRuntime } from "./agent-runtime-store.mjs";
 
 export const APP_ID = "ai-moe-studio";
 const rootDirectory = fileURLToPath(new URL("../", import.meta.url));
@@ -38,6 +38,10 @@ export async function loadConfig(filename) {
     refreshSeconds: raw.refreshSeconds ?? 5,
     staleAfterSeconds: raw.staleAfterSeconds ?? 60,
   };
+  if (raw.codexCliStateRoot != null || raw.codexCliHome != null) {
+    config.codexCliStateRoot = requiredPath(raw.codexCliStateRoot, "codexCliStateRoot", base);
+    config.codexCliHome = requiredPath(raw.codexCliHome, "codexCliHome", base);
+  }
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535
     || !Number.isInteger(config.refreshSeconds) || config.refreshSeconds < 1 || config.refreshSeconds > 3600
     || !Number.isInteger(config.staleAfterSeconds) || config.staleAfterSeconds < 60)
@@ -171,7 +175,9 @@ export function createStudioServer(config, options = {}) {
   const supervisor = demo ? null : new BridgeSupervisor(config, store, options.spawnProcess);
   const runtime = demo || options.runtime === false ? null : options.runtime ?? new AgentRuntimeStore({
     collectOptions: { dshStatusDirectory: path.join(path.dirname(config.snapshotPath), 'dsh-status'),
-      claudeStatusDirectory: path.join(path.dirname(config.snapshotPath), 'claude-status') },
+      claudeStatusDirectory: path.join(path.dirname(config.snapshotPath), 'claude-status'),
+      codexCliStateRoot: config.codexCliStateRoot, codexCliHome: config.codexCliHome,
+      readExternalCandidates: async () => codexCliCandidates(await store.get()) },
   });
   const server = http.createServer(async (req, res) => {
     const port = server.address()?.port;
@@ -181,7 +187,11 @@ export function createStudioServer(config, options = {}) {
     if (pathname === null) return send(req, res, 400, "Invalid path");
     try {
       if (pathname === "/health") return sendJson(req, res, 200, { app: APP_ID, schemaVersion: 1, mode: demo ? "demo" : "live" });
-      if (pathname === "/api/snapshot") return sendJson(req, res, 200, demo ? options.demoSnapshot : { ...await store.get(), ...(runtime ? { agentRuntime: runtime.get() } : {}) });
+      if (pathname === "/api/snapshot") {
+        if (demo) return sendJson(req, res, 200, options.demoSnapshot);
+        const snapshot = await store.get(), agentRuntime = runtime?.get();
+        return sendJson(req, res, 200, { ...applyCodexCliRuntime(snapshot, agentRuntime), ...(agentRuntime ? { agentRuntime } : {}) });
+      }
       if (pathname.startsWith("/api/")) return send(req, res, 404, "Not found");
       const root = await realpath(clientDirectory);
       let filename = path.resolve(root, "." + pathname);

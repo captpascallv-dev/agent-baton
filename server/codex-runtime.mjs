@@ -212,7 +212,7 @@ async function collectRuntime(options, context) {
   if (!complete) {
     const phase = signals.find(signal => signal?.phase && signal.phase !== "ready")?.phase;
     const reasons = { loading: "正在读取会话初始状态，尚未收齐。", disconnected: "本机会话状态连接已断开。",
-      revision_gap: "会话增量版本不连续，等待重新取得状态。", frame_limit: "会话状态帧超过64MiB读取上限。",
+      revision_gap: "会话增量版本不连续，等待重新取得状态。", frame_limit: "会话状态超过读取上限，已暂停重复读取以减少 Codex 开销；会话运行状态暂时未知。",
       owner_unconfirmed: "会话连接未重新确认，旧运行状态已撤下。",
       invalid_metadata: "当前会话状态格式暂时无法解析。" };
     result.coverage = reasons[phase] ?? "已读取部分 Codex App 状态；会话来源可能不完整，数量暂时未知。";

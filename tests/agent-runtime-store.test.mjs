@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AgentRuntimeStore, publicAgentObservation } from '../server/agent-runtime-store.mjs';
+import { AgentRuntimeStore, publicAgentObservation, codexCliCandidates, applyCodexCliRuntime, collectAgentRuntime } from '../server/agent-runtime-store.mjs';
+import { flattenSnapshot, externalFor, runtimeFor } from '../src/live-data.mjs';
 
 const now = Date.parse('2026-10-22T15:00:00Z');
 function row(patch = {}) {
@@ -50,4 +51,63 @@ test('stopping during collection publishes nothing and cancels the collector sig
   assert.equal(disposals, 1);
   resolve([row()]); await pending;
   assert.deepEqual(store.get(), { observedAt: null, agents: [] });
+});
+
+const jobId = '11111111-1111-7111-8111-111111111111';
+const jobKey = `${jobId}--1`;
+function externalFrame() {
+  const work = { id: 'fixture', actorName: 'Codex', actorKind: 'executor', quality: 'Fresh', model: 'configured-model' };
+  return { source: { status: 'live', stale: false }, projects: [
+    { id: jobKey, isCurrent: true, phase: 'running_unknown', works: [work, { ...work, id: 'other', actorName: 'Cursor' }] },
+    { id: `${jobId}--2`, isCurrent: false, phase: 'delivered', works: [work] },
+    { id: '../private', isCurrent: true, phase: 'running_unknown', works: [work] },
+  ] };
+}
+test('Codex CLI status decorates only its current job and does not change App counts or use configured models', () => {
+  const frame = externalFrame();
+  assert.deepEqual(codexCliCandidates(frame), [{ jobId, attempt: 1, jobKey }]);
+  const agent = publicAgentObservation(row({ externalObservedAt: new Date(now).toISOString(),
+    externalJobs: [{ jobKey, state: 'running', model: 'configured-model', threadId: 'PRIVATE_THREAD' }] }), now);
+  const runtime = { observedAt: new Date(now).toISOString(), agents: [agent] };
+  const output = { ...applyCodexCliRuntime(frame, runtime, now), agentRuntime: runtime };
+  const rows = flattenSnapshot(output);
+  assert.equal(rows.find(item => item.sourceProjectId === jobKey && item.agentId === 'codex').runtimeState, 'running');
+  assert.equal(rows.find(item => item.sourceProjectId === jobKey && item.agentId === 'cursor').runtimeState, 'unknown');
+  assert.equal(output.projects[1].works[0].runtimeState, undefined);
+  assert.equal(frame.projects[0].works[0].runtimeState, undefined, 'projection must not mutate the stored CLI frame');
+  assert.equal(runtimeFor(output, 'codex').activeSessions, 1);
+  assert.equal(externalFor(rows.filter(item => item.sourceProjectId === jobKey), 'codex').activeCount, 1);
+  assert.deepEqual(externalFor(rows.filter(item => item.sourceProjectId === jobKey), 'codex').models, ['模型未知']);
+  assert.doesNotMatch(JSON.stringify(agent.externalJobs), /PRIVATE_|configured-model/);
+});
+test('Codex CLI evidence has an independent clock, expires, and cannot decorate stale or mismatched jobs', () => {
+  const frame = externalFrame();
+  const raw = row({ sourceStatus: 'unavailable', externalObservedAt: new Date(now).toISOString(), externalJobs: [
+    { jobKey, state: 'running' }, { jobKey: '../private', state: 'running' },
+  ] });
+  const agent = publicAgentObservation(raw, now);
+  assert.equal(agent.instances.length, 0);
+  assert.equal(agent.externalJobs.length, 1, 'CLI remains observable when App is unavailable');
+  assert.equal(applyCodexCliRuntime(frame, { agents: [agent] }, now).projects[0].works[0].runtimeState, 'running');
+  assert.equal(applyCodexCliRuntime(frame, { agents: [agent] }, now + 61_000), frame);
+  const stale = { ...frame, source: { ...frame.source, stale: true } };
+  assert.deepEqual(codexCliCandidates(stale), []);
+  assert.equal(applyCodexCliRuntime(stale, { agents: [agent] }, now), stale);
+  const otherAttempt = publicAgentObservation({ ...raw, externalJobs: [{ jobKey: `${jobId}--3`, state: 'running' }] }, now);
+  assert.equal(applyCodexCliRuntime(frame, { agents: [otherAttempt] }, now).projects[0].works[0].runtimeState, undefined);
+});
+test('Codex CLI and local agents reuse one process snapshot per refresh', async () => {
+  const snapshot = { available: true, windowsAvailable: true, processes: [], parents: [] };
+  let processReads = 0, cliReads = 0;
+  const result = await collectAgentRuntime({
+    readHost: async () => ({ observedAt: new Date().toISOString(), openWindows: 0, hosts: [], endpoints: [] }),
+    readProcessSnapshot: async () => { processReads++; return snapshot; },
+    codexCliStateRoot: 'fixture-state', codexCliHome: 'fixture-home',
+    readExternalCandidates: async () => [{ jobId, attempt: 1, jobKey }],
+    collectCliRuntime: async args => { cliReads++; assert.equal(args.processSnapshot, snapshot); assert.equal(args.candidates[0].jobKey, jobKey); return [{ jobKey, state: 'idle', model: null }]; },
+  });
+  assert.equal(processReads, 1); assert.equal(cliReads, 1);
+  const codex = result.find(agent => agent.agentId === 'codex');
+  assert.equal(codex.openSessions, 0);
+  assert.deepEqual(codex.externalJobs, [{ jobKey, state: 'idle', model: null }]);
 });

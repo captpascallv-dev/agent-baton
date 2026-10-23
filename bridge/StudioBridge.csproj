@@ -10,13 +10,17 @@
   <ItemGroup>
     <Reference Include="CliWatch.App"><HintPath>$(CliWatchRuntimeDirectory)/CliWatch.App.dll</HintPath></Reference>
     <Reference Include="CliWatch.Contracts"><HintPath>$(CliWatchRuntimeDirectory)/CliWatch.Contracts.dll</HintPath></Reference>
-    <Reference Include="CliWatch.Collection"><HintPath>$(CliWatchRuntimeDirectory)/CliWatch.Collection.dll</HintPath></Reference>
+    <ProjectReference Include="collection/AiMoeStudio.Collection.csproj" />
     <Reference Include="CliWatch.Normalization"><HintPath>$(CliWatchRuntimeDirectory)/CliWatch.Normalization.dll</HintPath></Reference>
     <Reference Include="CliWatch.Projection"><HintPath>$(CliWatchRuntimeDirectory)/CliWatch.Projection.dll</HintPath></Reference>
     <Reference Include="CliWatch.Views"><HintPath>$(CliWatchRuntimeDirectory)/CliWatch.Views.dll</HintPath></Reference>
   </ItemGroup>
   <ItemGroup>
     <Reference Update="@(Reference)"><ExternallyResolved>true</ExternallyResolved></Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="collection/**/*.cs" />
+    <Compile Remove="tests/**/*.cs" />
   </ItemGroup>
   <Target Name="RequireInstalledRuntime" BeforeTargets="ResolveAssemblyReferences">
     <Error Condition="'$(CliWatchRuntimeDirectory)' == '' Or !Exists('$(CliWatchRuntimeDirectory)/CliWatch.App.dll')" Text="Pass -p:CliWatchRuntimeDirectory with the installed CLI Watch DLL directory." />

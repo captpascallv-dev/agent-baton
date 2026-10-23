@@ -4,6 +4,9 @@ const AGENTS = ['claude', 'codex', 'dsh', 'grok', 'grok-bot', 'cursor', 'pi', 'o
 const STATUSES = new Set(['live', 'partial', 'unavailable']);
 const STATES = new Set(['running', 'idle', 'unknown']);
 const counts = ['openWindows', 'openSessions', 'activeSessions', 'idleSessions', 'unknownSessions'];
+const JOB_KEY = /^([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})--([1-9]\d*)$/i;
+const isCodexWork = work => /\bcodex\b/i.test(`${work?.actorName ?? ''} ${work?.actorKind ?? ''}`);
+const isCurrentWork = work => work && !work.isHistorical && work.quality !== 'LastKnown';
 
 function count(value) { return Number.isSafeInteger(value) && value >= 0 ? value : null; }
 function at(value) { return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null; }
@@ -32,7 +35,45 @@ export function publicAgentObservation(raw, now = Date.now(), staleAfterMs = 60_
         model: state === 'running' ? safeText(item.model, 100) : null };
     });
   }
+  // External CLI evidence has its own clock and is independent of App coverage.
+  const externalObservedAt = at(raw.externalObservedAt);
+  if (raw.agentId === 'codex' && externalObservedAt && now - Date.parse(externalObservedAt) <= staleAfterMs
+    && now - Date.parse(externalObservedAt) >= -5_000 && Array.isArray(raw.externalJobs)) {
+    result.externalObservedAt = externalObservedAt;
+    result.externalJobs = raw.externalJobs.slice(0, 32).filter(job => JOB_KEY.test(job?.jobKey ?? '')).map(job => ({
+      jobKey: job.jobKey, state: STATES.has(job.state) ? job.state : 'unknown', model: null,
+    }));
+  }
   return result;
+}
+
+// Resolve only current Codex jobs already admitted by CLI Watch; never walk the
+// historical mailbox tree or infer an executor from the configured model.
+export function codexCliCandidates(snapshot) {
+  if (!snapshot || snapshot.source?.stale || !['live', 'degraded'].includes(snapshot.source?.status)) return [];
+  const result = new Map();
+  for (const project of snapshot.projects ?? []) {
+    const match = JOB_KEY.exec(project.id ?? '');
+    if (!project.isCurrent || project.quality === 'LastKnown' || !match
+      || !Number.isSafeInteger(Number(match[2])) || !project.works?.some(work => isCurrentWork(work) && isCodexWork(work))) continue;
+    result.set(project.id, { jobId: match[1], attempt: Number(match[2]), jobKey: project.id });
+    if (result.size === 32) break;
+  }
+  return [...result.values()];
+}
+
+export function applyCodexCliRuntime(snapshot, runtime, now = Date.now()) {
+  const allowed = new Set(codexCliCandidates(snapshot).map(job => job.jobKey));
+  const raw = runtime?.agents?.find(agent => agent.agentId === 'codex');
+  const observed = raw && publicAgentObservation(raw, now);
+  const byJob = new Map((observed?.externalJobs ?? []).map(job => [job.jobKey, job]));
+  if (!allowed.size || !byJob.size) return snapshot;
+  return { ...snapshot, projects: snapshot.projects.map(project => {
+    const signal = allowed.has(project.id) && byJob.get(project.id);
+    if (!signal) return project;
+    return { ...project, works: project.works.map(work => isCurrentWork(work) && isCodexWork(work)
+      ? { ...work, runtimeState: signal.state, runtimeModel: null } : work) };
+  }) };
 }
 
 function unavailable(agentId, now, coverage = '暂时读不到这个 agent 的本机状态。') {
@@ -40,15 +81,27 @@ function unavailable(agentId, now, coverage = '暂时读不到这个 agent 的�
 }
 
 export async function collectAgentRuntime(options = {}) {
+  const local = await import('./local-agents.mjs');
+  // CLI identity checks and other local agents share the same process frame.
+  const processSnapshot = Promise.resolve().then(() => (options.readProcessSnapshot ?? local.readProcessSnapshot)());
+  const cli = options.codexCliStateRoot && options.codexCliHome && options.readExternalCandidates
+    ? Promise.all([processSnapshot, options.readExternalCandidates()]).then(async ([snapshot, candidates]) => {
+      const collect = options.collectCliRuntime ?? (await import('./codex-cli-runtime.mjs')).collectCodexCliRuntime;
+      const externalJobs = await collect({ candidates, processSnapshot: snapshot,
+        stateRoot: options.codexCliStateRoot, codexHome: options.codexCliHome });
+      return { externalJobs, externalObservedAt: new Date().toISOString() };
+    }) : Promise.resolve(null);
   const results = await Promise.allSettled([
     import('./codex-runtime.mjs').then(module => module.collectCodexRuntime(options)),
-    import('./local-agents.mjs').then(module => module.collectLocalAgents(options)),
+    local.collectLocalAgents({ ...options, readProcessSnapshot: () => processSnapshot }),
+    cli,
   ]);
   const now = Date.now();
   const codex = results[0].status === 'fulfilled' ? [results[0].value] : [unavailable('codex', now)];
-  const local = results[1].status === 'fulfilled' && Array.isArray(results[1].value) ? results[1].value
+  if (results[2].status === 'fulfilled' && results[2].value) Object.assign(codex[0], results[2].value);
+  const others = results[1].status === 'fulfilled' && Array.isArray(results[1].value) ? results[1].value
     : AGENTS.filter(id => id !== 'codex').map(id => unavailable(id, now));
-  return [...codex, ...local];
+  return [...codex, ...others];
 }
 
 // One bounded collection at a time; HTTP reads never wait on local app discovery.

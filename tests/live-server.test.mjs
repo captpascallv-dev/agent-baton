@@ -128,6 +128,33 @@ test("agent runtime refresh publishes independently while the CLI frame is uncha
   assert.equal(stopped, 0);
 });
 
+test("Codex CLI native state reaches the HTTP snapshot without changing App session counts", async t => {
+  const key = '11111111-1111-7111-8111-111111111111--1';
+  const runtime = { start() {}, stop() {}, get: () => ({ observedAt: new Date().toISOString(), agents: [{
+    agentId: 'codex', observedAt: new Date().toISOString(), sourceStatus: 'live', activeSessions: 2, openSessions: 2,
+    instances: [], externalObservedAt: new Date().toISOString(), externalJobs: [{ jobKey: key, state: 'running', model: null }],
+  }] }) };
+  const f = await fixture(t, runtime);
+  const frame = payload(); frame.projects[0].id = key; frame.projects[0].works[0].actorName = 'Codex';
+  await f.put(f.snapshotPath, JSON.stringify(frame));
+  const api = JSON.parse((await f.request('/api/snapshot')).body);
+  assert.equal(api.projects[0].works[0].runtimeState, 'running');
+  assert.equal(api.projects[0].works[0].runtimeModel, null);
+  assert.equal(api.agentRuntime.agents[0].activeSessions, 2);
+});
+
+test("Codex CLI config requires the state root and native home together", async t => {
+  const f = await fixture(t);
+  const filename = path.join(f.directory, 'config.json');
+  const raw = { ...f.config, port: 4173, codexCliStateRoot: 'native-jobs' };
+  await f.put(filename, JSON.stringify(raw));
+  await assert.rejects(loadConfig(filename), /codexCliHome/);
+  await f.put(filename, JSON.stringify({ ...raw, codexCliHome: 'native-home' }));
+  const loaded = await loadConfig(filename);
+  assert.equal(loaded.codexCliStateRoot, path.join(f.directory, 'native-jobs'));
+  assert.equal(loaded.codexCliHome, path.join(f.directory, 'native-home'));
+});
+
 test("missing/invalid initial frames and expired frames are explicit starting/offline", async t => {
   const f = await fixture(t);
   let now = Date.parse("2026-10-22T01:00:00Z");
