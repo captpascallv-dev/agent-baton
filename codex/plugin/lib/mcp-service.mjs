@@ -11,6 +11,10 @@ export const TOOLS = [
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } },
   { name: 'stop_app_mailbox_watch', description: 'Stop an owned project without deleting evidence. Only the configured coordinator may omit project to stop all routes.', inputSchema: schema,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } },
+  { name: 'ack_app_mailbox_delivery', description: 'The exact original delivery owner, still the current route owner, records notifications already read/handled. Suppress only pending notifications without a committed send. Never records business acceptance or rewrites transport uncertainty; no coordinator override.',
+    inputSchema: { type: 'object', additionalProperties: false, required: ['deliveryIds'], properties: {
+      deliveryIds: { type: 'array', minItems: 1, maxItems: 32, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 221 } },
+    } }, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } },
   { name: GRANT_DELEGATION_TOOL, description: 'Configured coordinator only, identified by this call metadata/executor environment: explicitly grant revocable background reception after service reload. Requires enabled all-watch; binds coordinator, roots and current epoch. Never enables watch. Accepts no arguments.', inputSchema: noArguments,
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } },
   { name: REVOKE_DELEGATION_TOOL, description: 'Configured coordinator only: revoke background delegation. Stop new delegated claims/sends, retain submitted sends and receipts. Startup/status never restore the grant. Accepts no arguments.', inputSchema: noArguments,
@@ -28,7 +32,7 @@ export function callerIdentity(params, env = process.env) {
 }
 export async function handleRequest(message, engine, env = process.env) {
   if (!message || message.jsonrpc !== '2.0') throw new Error('Invalid JSON-RPC request.');
-  if (message.method === 'initialize') return { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'codex-mail-wake', version: '0.4.1' },
+  if (message.method === 'initialize') return { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'codex-mail-wake', version: '0.5.0' },
     instructions: 'Start only after explicit continuous-reception authorization. Receipts do not prove actual Lead continuation. Existing intents are never automatically resent.' };
   if (message.method === 'tools/list') return { tools: TOOLS };
   if (message.method === 'ping') return {};
@@ -38,12 +42,14 @@ export async function handleRequest(message, engine, env = process.env) {
     const params = message.params ?? {}; const args = params.arguments ?? {};
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Arguments must be an object.');
     const delegationTool = [GRANT_DELEGATION_TOOL, REVOKE_DELEGATION_TOOL].includes(params.name);
-    for (const name of Object.keys(args)) if (delegationTool || name !== 'project') throw new Error(`Unsupported argument: ${name}.`);
+    const acknowledgment = params.name === 'ack_app_mailbox_delivery';
+    for (const name of Object.keys(args)) if (delegationTool || name !== (acknowledgment ? 'deliveryIds' : 'project')) throw new Error(`Unsupported argument: ${name}.`);
     const identity = callerIdentity(params, env); engine.bindActualCaller(identity.owner, identity.source);
     let value;
     if (params.name === 'start_app_mailbox_watch') value = engine.startWatch(identity.owner, args);
     else if (params.name === 'stop_app_mailbox_watch') value = engine.stopWatch(identity.owner, args);
     else if (params.name === 'app_mailbox_status') value = engine.getStatus(identity.owner, args.project ?? null);
+    else if (acknowledgment) value = await engine.acknowledgeDeliveries(identity.owner, args, identity.source);
     else if (params.name === GRANT_DELEGATION_TOOL) value = await engine.grantDelegation(identity.owner, identity.source);
     else if (params.name === REVOKE_DELEGATION_TOOL) value = await engine.revokeDelegation(identity.owner, identity.source);
     else throw new Error('Unknown reception tool.');

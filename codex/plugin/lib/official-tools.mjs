@@ -117,7 +117,7 @@ export class OfficialTools {
     });
     this.ready = (async () => {
       await this.request('initialize', { protocolVersion: '2024-11-05', capabilities: {},
-        clientInfo: { name: 'codex-mail-wake', version: '0.4.1' } });
+        clientInfo: { name: 'codex-mail-wake', version: '0.5.0' } });
       child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
       const catalog = await this.request('tools/list', {});
       for (const name of ['read_thread', 'send_message_to_thread']) {

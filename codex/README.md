@@ -1,4 +1,4 @@
-# Codex Mail Wake 0.4.1
+# Codex Mail Wake 0.5.0
 
 MIT。Node 22+、Python 3.10+。独立的可安装 Codex 插件：普通程序持续接收已登记 CLI/Bot 交付，完整通知发给登记时的原 Lead。没有私信功能、执行器启动、provider 调用或 PID 看门。收到一次交付后继续守候，默认没有总截止；等待本身不调用模型，Lead 处理通知仍会调用模型。
 
@@ -76,6 +76,7 @@ READY 无内嵌 job/attempt ID，因此规范化 outbox 永久绑定一个 proje
 | `start_app_mailbox_watch({"project":"demo"})` | 实际 caller 是该项目当前原 owner；持久持续接收许可 |
 | `app_mailbox_status({"project":"demo"})` | 普通 Lead只见自己当前登记项目及运输状态 |
 | `stop_app_mailbox_watch({"project":"demo"})` | 停本项目，保留所有 pending/claim/intent/receipt |
+| `ack_app_mailbox_delivery({"deliveryIds":["准确交付ID"]})` | 原收件人本人确认已读/处理，抑制尚未提交发送的迟到通知；不是业务验收 |
 | `grant_app_mailbox_delegation({})` | 仅本次真实 caller 为配置协调者；明确授予可撤销后台身份委托，不开启 watch |
 | `revoke_app_mailbox_delegation({})` | 仅本次真实 caller 为配置协调者；撤回后台委托，保留交付与收据 |
 
@@ -83,7 +84,25 @@ READY 无内嵌 job/attempt ID，因此规范化 outbox 永久绑定一个 proje
 
 权限按真实 tools/call metadata（无 metadata 时真实 executor env）检查。后台 actor 优先取本次 `CODEX_THREAD_ID`，缺失才由本实例真实工具 metadata 绑定；仅这两者均缺失时，有效明确委托可提供后台 actor。持久 registrar 不构成委托，委托永不充当普通工具 caller。没有伪造 turn_id、改变原模型/档位/服务档。start/stop/grant/revoke 遵循正常 prompt 审批；官方审批配置未改，原生拒绝不换路处理。
 
-`scan -> 原子 claim -> 官方 send -> exact receipt ack`。claim.prompt 原样发送，包括自动投递说明和原报告。读取原 owner，只有 idle/notLoaded 可送；active/systemError/未知保持 pending。[官方 ThreadStatus 类型](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/schema/typescript/v2/ThreadStatus.ts)与[thread/read 文档](https://learn.chatgpt.com/docs/app-server#read-a-stored-thread-without-resuming)是接口依据，read 不会加载线程。sent 仅证明通知接受，Lead实际接续/任务验收另行确认。
+`scan -> 原子 claim -> 官方 send -> exact receipt ack`。每件 claim.prompt 完整保留，包括自动投递说明和原报告；单件原样发送，多件按同 owner 合批。读取原 owner，只有 idle/notLoaded 可送；active/systemError/未知保持 pending。[官方 ThreadStatus 类型](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/schema/typescript/v2/ThreadStatus.ts)与[thread/read 文档](https://learn.chatgpt.com/docs/app-server#read-a-stored-thread-without-resuming)是接口依据，read 不会加载线程。sent 仅证明通知接受，Lead实际接续/任务验收另行确认。
+
+## 0.5.0：已处理回执与积压合批
+
+Lead 如果在通知送达前已经实际读取并处理了登记交付，可以调用 `ack_app_mailbox_delivery({"deliveryIds":["YOUR_REGISTERED_DELIVERY_KEY"]})`。一次接受 1–32 个不同 ID；每件都必须属于实际 caller，且 caller 仍是当前 route owner，协调者没有代确认权限。整组身份先校验，再取得原发送锁并复核。锁忙返回 `target_send_busy`，本次没有登记；已提交的通知不能被此操作取消。
+
+`handled.json` 绑定原交付 ID、项目、owner、创建时间和原文身份。它只表达“已处理通知”，不把中央 pending 写成 sent，不记录业务验收，不改写已有 intent、sent、uncertain 或永久 claim。状态接口的 `ownerHandled` / `handledAtUtc` 与运输结果分别展示。正常由通知唤醒并处理的件通常不需要再确认；新 attempt 仍是新交付。
+
+同一轮积压按精确 owner 分组，在同一目标发送锁内合并。不同 owner 永不混批；发送前和异步步骤后仍检查各项目权限与 epoch。每件 claim.prompt 都完整保留，不摘要或截断；单件原样发送，多件用合批说明串接。通常一批最多 256KiB（UTF-8，含合批说明），剩余件保持 pending 且不提前 claim；原本就超限的单件保持原单发契约。驱动输出按连续 UTF-8 流解码，跨数据块的中文等字符保持完整。
+
+每件保留独立 intent、claim 和 outcome，批次另存成员清单与一次发送的原始收据。总收据先持久化，再逐件补 receipt/ack。记账中断时从准确批次收据补完该件，不重新发送整个批次；没有确切接受收据的超时、拒绝或未知结果保留不确定状态，不盲重发。独立新交付仍可继续。
+
+### 使用与升级
+
+自动化协作等待执行者异步回件时，Lead 做完独立工作就结束本轮，由已登记通道回叫。正常实时交互、当前命令完成等同步操作可按实际需要等待；插件不拦截等待工具。
+
+升级时统一替换仍能发送通知的旧插件实例，使用同一组外置账本和接收状态目录，不删除用户状态，不让旧版与新版混跑。保留 `handled.json`、`wake-batches/`、逐件 intent/receipt/outcome 及原锁/许可/委托文件。使用新回执后，不能直接启动不识别 handled/batch 状态的旧接收器；回退前须处理兼容性，防止旧版再次发送已处理通知。插件本身不会重启共享 App、清空状态或替用户重新授权。
+
+本版仍只提供登记交付接收，没有私人 inbox、父子项目治理或厂商执行器。公共包的实际验证范围见 [VALIDATION.md](VALIDATION.md)。
 
 ## 后台身份委托（0.4.0）
 

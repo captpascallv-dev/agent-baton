@@ -2,17 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { key } from './ids.mjs';
 import { readJson, writeJsonAtomic, createJsonOnce } from './store.mjs';
 import { exactSendReceipt } from './official-tools.mjs';
 import { BackgroundDelegation, identitySources, validWatchEpoch } from './delegation.mjs';
+import { WakeBatchJournal, combinedPrompt, selectPromptBatch } from './wake-batch.mjs';
 
 const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const driverPath = path.join(pluginRoot, 'driver', 'mailbox_driver.py');
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,220}$/.test(value);
 const validProject = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,150}$/.test(value);
 const terminalOutcomes = new Set(['sent', 'uncertain', 'manual_review_required']);
+const batchLabel = '[app-mailbox:batch] Registered delivery backlog';
 const uniqueFacts = items => [...new Map(items.map(item => {
   const { observationId, ...facts } = item;
   return [JSON.stringify(facts), facts];
@@ -28,6 +30,7 @@ export class MailboxDriver {
     return new Promise((resolve, reject) => {
       const argv = ['-B', '-X', 'utf8', driverPath, '--root', this.root];
       const child = spawn(this.pythonPath, argv, { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
       this.children.add(child);
       let stdout = '', stderr = '', settled = false;
       const finish = (error, value) => {
@@ -105,6 +108,7 @@ export class AppMailboxEngine {
     this.nextBridgeProbeAttempt = 0; this.bridgeProbe = null; this.lastBridgeProbe = null;
     this.client.onTransportFailure = error => this.bridgeFailed(error);
     this.recordProblems = new Map();
+    this.batches = new WakeBatchJournal(path.join(this.stateDir, 'wake-batches'));
     for (const folder of ['projects', 'deliveries', 'faults', 'record-problems']) fs.mkdirSync(path.join(this.stateDir, folder), { recursive: true });
     const bindingPath = path.join(this.stateDir, 'binding.json');
     createJsonOnce(bindingPath, { mailboxRoot: this.root });
@@ -300,6 +304,77 @@ export class AppMailboxEngine {
     if (!route || route.status !== 'active' || route.thread_id !== delivery.target_thread_id) throw new Error('Current active route does not match the registered exact delivery owner; handoff required.');
     return route;
   }
+  notificationIdentity(delivery) {
+    if (typeof delivery.created_at !== 'string' || !Number.isFinite(Date.parse(delivery.created_at))
+      || typeof delivery.prompt !== 'string' || !delivery.prompt.length) throw new Error('Original immutable notification identity is unavailable.');
+    return { id: delivery.id, project: delivery.project, target_thread_id: delivery.target_thread_id,
+      created_at: delivery.created_at, promptSha256: createHash('sha256').update(delivery.prompt, 'utf8').digest('hex') };
+  }
+  matchingHandledProof(delivery) {
+    const proof = readJson(this.localPath(delivery.id, 'handled.json'));
+    if (!proof || proof._unreadable || proof.schemaVersion !== 1 || proof.kind !== 'owner_handled_notification'
+      || proof.acknowledgedBy !== delivery.target_thread_id || !Object.values(identitySources).includes(proof.callerSource)) return null;
+    if (this.routes()[delivery.project]?.thread_id !== delivery.target_thread_id) return null;
+    let identity;
+    try { identity = this.notificationIdentity(delivery); } catch { return null; }
+    return Object.keys(identity).every(name => proof.identity?.[name] === identity[name]) ? proof : null;
+  }
+  suppressHandled(delivery) {
+    if (delivery.state !== 'pending' || readJson(this.localPath(delivery.id, 'intent.json'))
+      || fs.existsSync(path.join(this.root, 'claims', `${delivery.id}.lock`))) return false;
+    const proof = this.matchingHandledProof(delivery); if (!proof) return false;
+    const previous = readJson(this.localPath(delivery.id, 'outcome.json'));
+    if (previous?._unreadable || terminalOutcomes.has(previous?.status)) return false;
+    if (previous?.status !== 'suppressed' || previous.handledAtUtc !== proof.acknowledgedAtUtc) {
+      this.localOutcome(delivery.id, 'suppressed', { reason: 'The exact owner handled this notification before a committed send.',
+        handledAtUtc: proof.acknowledgedAtUtc, handledProofPath: this.localPath(delivery.id, 'handled.json') }, delivery);
+    }
+    return true;
+  }
+  async acknowledgeDeliveries(owner, args, source) {
+    if (!Object.hasOwn(identitySources, source)) throw new Error('Notification acknowledgment requires actual tool caller identity.');
+    if (!args || Array.isArray(args) || typeof args !== 'object' || Object.keys(args).some(name => name !== 'deliveryIds')
+      || !Array.isArray(args.deliveryIds) || args.deliveryIds.length < 1 || args.deliveryIds.length > 32
+      || args.deliveryIds.some(id => !validId(id)) || new Set(args.deliveryIds).size !== args.deliveryIds.length) {
+      throw new Error('deliveryIds must contain 1 to 32 unique exact delivery IDs; no extra fields are accepted.');
+    }
+    const validate = () => args.deliveryIds.map(id => {
+      const delivery = this.delivery(id);
+      if (delivery.target_thread_id !== owner || this.routes()[delivery.project]?.thread_id !== owner) {
+        throw new Error('Only the exact original target who is still the current route owner may acknowledge; no coordinator override.');
+      }
+      const identity = this.notificationIdentity(delivery);
+      const prior = readJson(this.localPath(id, 'handled.json'));
+      if (prior && !this.matchingHandledProof(delivery)) throw new Error('Existing acknowledgment is unreadable or bound to another notification; retained.');
+      return { delivery, identity };
+    });
+    // Validate every item before writing, then recheck under the send lock.
+    const initial = validate();
+    const lease = await this.driver.acquireTarget(owner, this.stateDir);
+    if (!lease) return { outcome: 'target_send_busy', recorded: false, acknowledgments: [] };
+    try {
+      if (this.closed || !lease.alive) throw new Error('Target lock ended; nothing recorded.');
+      const current = validate();
+      if (current.some((item, index) => JSON.stringify(item.identity) !== JSON.stringify(initial[index].identity))) {
+        throw new Error('Notification identity changed while acquiring the target lock; nothing recorded.');
+      }
+      const acknowledgments = [];
+      for (const { delivery, identity } of current) {
+        try {
+          const created = createJsonOnce(this.localPath(delivery.id, 'handled.json'), { schemaVersion: 1,
+            kind: 'owner_handled_notification', identity, acknowledgedBy: owner, callerSource: identitySources[source],
+            acknowledgedAtUtc: this.iso(), businessAcceptanceRecorded: false, notificationAccepted: false });
+          acknowledgments.push({ deliveryId: delivery.id, outcome: created ? 'recorded' : 'already_recorded',
+            pendingNotificationSuppressed: this.suppressHandled(delivery), priorTransportState: delivery.state,
+            businessAcceptanceRecorded: false, notificationAccepted: delivery.state === 'sent' });
+        } catch (error) {
+          acknowledgments.push({ deliveryId: delivery.id, outcome: 'record_uncertain', error: String(error),
+            reason: 'Inspect this exact acknowledgment; prior claims, receipts and transport outcomes are retained.' });
+        }
+      }
+      return { outcome: 'owner_notification_acknowledgments', acknowledgments };
+    } finally { await lease.release(); }
+  }
   getStatus(owner, project = null) {
     if (this.bridgeUnavailable) this.kick(); // A status consumer can nudge the running poll loop; rate limit still applies.
     // A standby instance must report current shared evidence, not its startup cache.
@@ -336,8 +411,10 @@ export class AppMailboxEngine {
         if (!validId(value.id)) { ledgerProblems.push({ path: path.join(this.root, 'deliveries', name), project: value.project, reason: 'Invalid central delivery identity; no send.' }); return []; }
         const local = readJson(this.localPath(value.id, 'outcome.json'));
         const wait = readJson(this.localPath(value.id, 'wait.json'));
+        const handled = this.matchingHandledProof(value);
         return [{ id: value.id, project: value.project, targetThreadId: value.target_thread_id,
           centralState: value.state, notificationAccepted: value.state === 'sent', actualLeadContinuationVerified: false,
+          ownerHandled: Boolean(handled), handledAtUtc: handled?.acknowledgedAtUtc ?? null,
           receiverState: local?._unreadable ? 'uncertain' : local?.status ?? (value.state === 'sending' ? 'manual_review_required' : 'not_sent'),
           reason: local?.reason ?? (value.state === 'sending' ? 'Central sending/claim retained; never blind resend.' : null),
           ownerStatus: wait?.ownerStatus ?? null, blockedSinceUtc: wait?.blockedSinceUtc ?? null }];
@@ -475,8 +552,11 @@ export class AppMailboxEngine {
   }
   async recoverReceipt(delivery) {
     if (delivery.state !== 'sending') return false;
-    const receipt = readJson(this.localPath(delivery.id, 'receipt.json'));
-    if (!receipt || receipt._unreadable || !exactSendReceipt(receipt, delivery.target_thread_id)) return false;
+    const local = readJson(this.localPath(delivery.id, 'receipt.json'));
+    const intent = readJson(this.localPath(delivery.id, 'intent.json'));
+    const receipt = exactSendReceipt(local, delivery.target_thread_id) ? local
+      : this.batches.receipt(intent, delivery.id, delivery.target_thread_id);
+    if (!receipt) return false;
     try {
       // Ack records a PRIOR exact acceptance. It cannot start or resume business;
       // use the existing ack's registered-target rule even if the watch was stopped.
@@ -515,70 +595,115 @@ export class AppMailboxEngine {
       }
     }
   }
-  async processReady(item) {
-    const actor = this.pollActor;
-    if (!this.transportAuthorized(actor)) return;
-    const candidate = this.delivery(item.id); const route = this.exactRoute(candidate);
-    if (candidate.state !== 'pending' || !this.permission(candidate.project, route)) return;
-    const lease = await this.driver.acquireTarget(candidate.target_thread_id, this.stateDir);
+  readyDelivery(item, lockedOwner = null) {
+    const delivery = this.delivery(item.id); const route = this.exactRoute(delivery);
+    if (lockedOwner && delivery.target_thread_id !== lockedOwner) return null;
+    const permission = this.permission(delivery.project, route);
+    if (!permission || delivery.state !== 'pending') return null;
+    if (typeof delivery.prompt !== 'string') throw new Error('Original pending prompt is unavailable.');
+    // Local attempts remain one-shot guards even if central pending is restored.
+    if (readJson(this.localPath(delivery.id, 'intent.json'))) return null;
+    const outcome = readJson(this.localPath(delivery.id, 'outcome.json'));
+    if (outcome?._unreadable || terminalOutcomes.has(outcome?.status) || this.suppressHandled(delivery)) return null;
+    if (fs.existsSync(path.join(this.root, 'claims', `${delivery.id}.lock`))) return null;
+    return { delivery, permission };
+  }
+  async processReady(item) { return this.processReadyBatch([item]); }
+  async processReadyBatch(items) {
+    if (!items.length || !this.transportAuthorized()) return;
+    const owner = this.delivery(items[0].id).target_thread_id;
+    if (items.some(item => this.delivery(item.id).target_thread_id !== owner)) throw new Error('A wake batch cannot cross owners.');
+    const lease = await this.driver.acquireTarget(owner, this.stateDir);
     if (!lease) return;
-    try { await this.processReadyLocked(item, candidate.target_thread_id, lease); }
+    try { await this.processReadyBatchLocked(items, owner, lease); }
     finally { await lease.release(); }
   }
-  async processReadyLocked(item, lockedOwner, lease) {
+  async processReadyLocked(item, owner, lease) { return this.processReadyBatchLocked([item], owner, lease); }
+  async processReadyBatchLocked(items, owner, lease) {
     const actor = this.pollActor;
     if (!lease.alive || !this.transportAuthorized(actor)) return;
-    let delivery = this.delivery(item.id); const route = this.exactRoute(delivery);
-    if (delivery.target_thread_id !== lockedOwner) return;
-    const permission = this.permission(delivery.project, route);
-    if (!permission || delivery.state !== 'pending') return;
-    if (fs.existsSync(path.join(this.root, 'claims', `${delivery.id}.lock`))) return;
-    if (!this.client.pipePresent) return;
-    const caller = actor.threadId;
-    const authorized = () => lease.alive && this.deliveryAuthorized(delivery, actor, permission.epoch);
+    const candidates = [];
+    for (const item of items) {
+      try { const ready = this.readyDelivery(item, owner); if (ready) candidates.push(ready); }
+      catch (error) { this.recordProblem(`batch-ready:${item.id}`, { deliveryId: item.id, project: item.project, reason: String(error) }); }
+    }
+    // This ledger stores the FINAL envelope before claim; no private wrapper or
+    // separate preview protocol is required. Recheck the exact envelope later.
+    const selected = selectPromptBatch(candidates, item => item.delivery.prompt, batchLabel);
+    if (!selected.length) return;
+    const authorized = () => lease.alive && this.transportAuthorized(actor)
+      && selected.every(({ delivery, permission }) => this.deliveryAuthorized(delivery, actor, permission.epoch));
     if (!authorized()) return;
-    let observed;
-    try { observed = await this.client.readThread(delivery.target_thread_id, caller, authorized); }
+    const caller = actor.threadId; let observed;
+    try { observed = await this.client.readThread(owner, caller, authorized); }
     catch (error) {
       if (!authorized()) return;
-      this.observeBlocked(delivery, 'read_unavailable', `Preflight unavailable; central pending retained: ${String(error).slice(0, 300)}`);
+      for (const { delivery } of selected) this.observeBlocked(delivery, 'read_unavailable', `Preflight unavailable; central pending retained: ${String(error).slice(0, 300)}`);
       this.bridgeFailed(error); return;
     }
     if (!authorized()) return;
+    if (observed.thread?.id !== owner) throw new Error('Preflight returned a different owner.');
     const ownerStatus = observed.thread.status?.type ?? 'unknown';
     if (!['idle', 'notLoaded'].includes(ownerStatus)) {
-      this.observeBlocked(delivery, ownerStatus, `Original owner status ${ownerStatus}; central pending retained.`); return;
+      for (const { delivery } of selected) this.observeBlocked(delivery, ownerStatus, `Original owner status ${ownerStatus}; central pending retained.`);
+      return;
     }
-    writeJsonAtomic(this.localPath(delivery.id, 'wait.json'), { deliveryId: delivery.id, ownerStatus, blockedSinceUtc: null, lastObservedAtUtc: this.iso() });
-    delivery = this.delivery(item.id); const latestRoute = this.exactRoute(delivery);
-    if (!this.permission(delivery.project, latestRoute) || !authorized()) return;
-    let claimed;
+    const batchId = this.batches.allocate(); const claimedItems = [];
     try {
-      const response = await this.driver.run('claim', { id: delivery.id });
-      if (response.busy) return; claimed = response.result;
-    } catch { return; } // A claim loser must never write the winner's outcome or raise a fault.
-    try {
-      if (claimed.id !== delivery.id || claimed.project !== delivery.project || claimed.state !== 'sending'
-        || claimed.target_thread_id !== delivery.target_thread_id || typeof claimed.prompt !== 'string') throw new Error('Claim identity/owner/prompt differs from the registered delivery.');
-      this.exactRoute(claimed);
-      if (!authorized()) throw new Error('Watch/leader/delegation stopped after central claim; retain sending without sending.');
-      const intent = { schemaVersion: 1, deliveryId: claimed.id, project: claimed.project,
-        ownerThreadId: claimed.target_thread_id, callerThreadId: caller, permissionRegisteredBy: permission.registeredBy, actorSource: actor.source,
-        delegationGrantId: actor.grantId, instanceId: this.instanceId,
-        intentAtUtc: this.iso(), sentFields: ['threadId', 'prompt'],
-        metadataFields: ['x-codex-turn-metadata.thread_id'] };
-      if (!createJsonOnce(this.localPath(claimed.id, 'intent.json'), intent)) throw new Error('Existing receiver intent retained; no automatic resend.');
-      if (!authorized()) throw new Error('Authorization ended before send; intent retained without resend.');
-      const receipt = await this.client.send(claimed.target_thread_id, claimed.prompt, caller, authorized);
-      createJsonOnce(this.localPath(claimed.id, 'receipt.json'), receipt);
-      if (!exactSendReceipt(receipt, claimed.target_thread_id)) {
-        this.localOutcome(claimed.id, 'uncertain', { reason: receipt?.isError ? 'Official send rejected; central sending/lock retained.' : 'No exact owner acceptance; central sending/lock retained.' }, claimed); return;
+      for (const { delivery: original, permission } of selected) {
+        if (!authorized()) throw new Error('Watch/route/leader changed during batch assembly; retain claims without sending.');
+        const ready = this.readyDelivery(original, owner); if (!ready) continue;
+        const { delivery } = ready;
+        if (delivery.project !== original.project || delivery.created_at !== original.created_at || delivery.prompt !== original.prompt) {
+          throw new Error('Original pending notification changed during preflight; do not claim changed content.');
+        }
+        writeJsonAtomic(this.localPath(delivery.id, 'wait.json'), { deliveryId: delivery.id, ownerStatus, blockedSinceUtc: null, lastObservedAtUtc: this.iso() });
+        let response;
+        try { response = await this.driver.run('claim', { id: delivery.id }); }
+        catch { continue; } // A claim loser never writes the winner's outcome.
+        if (response.busy) continue;
+        const claimed = response.result;
+        if (claimed.id !== delivery.id || claimed.project !== delivery.project || claimed.state !== 'sending'
+          || claimed.target_thread_id !== owner || typeof claimed.prompt !== 'string') throw new Error('Claim identity differs from its original delivery.');
+        claimedItems.push(claimed);
+        if (claimed.prompt !== original.prompt || claimed.created_at !== original.created_at) throw new Error('Claim envelope differs from the selected final prompt; retain claim without send.');
+        if (!authorized()) throw new Error('Authorization ended after claim; retain sending without sending.');
+        const intent = { schemaVersion: 1, deliveryId: claimed.id, project: claimed.project, batchId,
+          ownerThreadId: owner, callerThreadId: caller, permissionRegisteredBy: permission.registeredBy, actorSource: actor.source,
+          delegationGrantId: actor.grantId, instanceId: this.instanceId, intentAtUtc: this.iso(),
+          sentFields: ['threadId', 'prompt'], metadataFields: ['x-codex-turn-metadata.thread_id'] };
+        if (!createJsonOnce(this.localPath(claimed.id, 'intent.json'), intent)) throw new Error('Existing receiver intent retained; never resend.');
       }
-      const ack = await this.driver.run('ack', { id: claimed.id, receipt });
-      if (ack.busy) this.localOutcome(claimed.id, 'receipt_pending_ack', { reason: 'Exact receipt persisted; OS lock busy. Next tick may ack only.' }, claimed);
-      else this.localOutcome(claimed.id, 'sent', { reason: 'Original exact receipt accepted by the existing central ack.' }, claimed);
+      if (!claimedItems.length) return;
+      if (!authorized()) throw new Error('Authorization ended before send; intents retained without resend.');
+      this.batches.publish(batchId, owner, claimedItems.map(item => item.id), this.iso());
+      const receipt = await this.client.send(owner, combinedPrompt(claimedItems.map(item => item.prompt), batchLabel), caller, authorized);
+      this.batches.saveReceipt(batchId, receipt);
+      for (const claimed of claimedItems) {
+        try {
+          createJsonOnce(this.localPath(claimed.id, 'receipt.json'), receipt);
+          if (!exactSendReceipt(receipt, owner)) {
+            this.localOutcome(claimed.id, 'uncertain', { batchId, reason: receipt?.isError ? 'Official batch send rejected; claim retained.' : 'No exact owner acceptance; claim retained.' }, claimed);
+            continue;
+          }
+          const ack = await this.driver.run('ack', { id: claimed.id, receipt });
+          this.localOutcome(claimed.id, ack.busy ? 'receipt_pending_ack' : 'sent', { batchId,
+            reason: ack.busy ? 'Exact batch receipt persisted; recover ack only.' : 'Exact batch receipt accepted by per-item central ack.' }, claimed);
+        } catch (error) {
+          try {
+            this.localOutcome(claimed.id, exactSendReceipt(receipt, owner) ? 'receipt_pending_ack' : 'uncertain',
+              { batchId, reason: 'Batch receipt retained after interrupted item bookkeeping; never resend.', error: String(error) }, claimed);
+          } catch (writeError) { this.recordProblem(`batch-outcome:${claimed.id}`, { deliveryId: claimed.id, project: claimed.project, reason: String(writeError) }); }
+        }
+      }
     } catch (error) {
-      this.localOutcome(delivery.id, 'uncertain', { reason: 'Central sending/claim retained after failed or ambiguous send; never blind resend.', error: String(error) }, delivery);
+      for (const claimed of claimedItems) {
+        try {
+          const receipt = this.batches.receipt(readJson(this.localPath(claimed.id, 'intent.json')), claimed.id, owner);
+          this.localOutcome(claimed.id, receipt ? 'receipt_pending_ack' : 'uncertain', { batchId,
+            reason: receipt ? 'Exact batch receipt retained; recover ack only.' : 'Claim retained after failed or ambiguous batch; never blind resend.', error: String(error) }, claimed);
+        } catch (writeError) { this.recordProblem(`batch-outcome:${claimed.id}`, { deliveryId: claimed.id, project: claimed.project, reason: String(writeError) }); }
+      }
       this.bridgeFailed(error);
     }
   }
@@ -616,10 +741,21 @@ export class AppMailboxEngine {
           }
         } catch (error) { errors.push({ id: item.id, project: item.project, error: String(error) }); }
       }
+      const batches = new Map();
       for (const item of scan.ready ?? []) {
         if (!this.transportAuthorized()) break;
-        try { await this.processReady(item); }
+        try {
+          const ready = this.readyDelivery(item); if (!ready) continue;
+          const owner = ready.delivery.target_thread_id;
+          if (!batches.has(owner)) batches.set(owner, []);
+          batches.get(owner).push(item);
+        }
         catch (error) { errors.push({ id: item.id, project: item.project, error: String(error) }); }
+      }
+      for (const items of batches.values()) {
+        if (!this.transportAuthorized()) break;
+        try { await this.processReadyBatch(items); }
+        catch (error) { errors.push({ id: items[0].id, project: items[0].project, error: String(error) }); }
       }
       this.lastScan.errors = uniqueFacts(errors);
       writeJsonAtomic(path.join(this.stateDir, 'scan-status.json'), this.lastScan);

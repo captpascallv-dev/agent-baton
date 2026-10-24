@@ -74,7 +74,7 @@ pwsh -NoProfile -File claude/bin/Dispatch.ps1 -Executor codex `
 
 ### Codex App 当 Lead
 
-`codex-mail-wake`（公共版 0.4.1）通过 Codex 插件 marketplace 安装；配置后用 `start_app_mailbox_watch` 持续接收登记交付，并经用户已安装的官方 App Tools 通知原 Lead。它支持可撤销的后台身份委托、精确回执与防重复发送；0.4.1 补齐发送超时隔离、同目标跨进程发送锁和旧聊天状态查询兼容。安装、配置、恢复及验证边界见 [Codex 说明](codex/README.md)。
+`codex-mail-wake`（公共版 0.5.0）通过 Codex 插件 marketplace 安装；配置后用 `start_app_mailbox_watch` 持续接收登记交付，并经用户已安装的官方 App Tools 通知原 Lead。0.5.0 新增原 owner 已处理通知回执、同 owner 积压合批与逐件收据恢复，并修正 UTF-8 跨块解码；原发送锁、超时隔离和身份委托继续保留。安装、配置、恢复及验证边界见 [Codex 说明](codex/README.md)。
 
 ### 打开 Windows 执行窗
 

@@ -1,4 +1,28 @@
-# Public Codex 0.4.1 validation
+# Public Codex 0.5.0 validation
+
+2026-10-25 (Asia/Taipei), Windows, Node 24.19.0 and Python 3.12.10.
+
+```text
+npm --prefix codex/plugin test
+node codex/tools/check-public.mjs
+```
+
+The full public suite passed: **35 tests, 0 failures, 0 skips**. It includes 13 results for the new reliability cases (including two nested revocation cases). The test process tree had a 2 GiB memory cap; observed peak was 0.32 GiB. The public structure check passed with version 0.5.0, six MCP tools, JavaScript/Python syntax checks and the existing literal user-path/session-ID exclusion checks.
+
+| Changed behavior | Public-code evidence |
+| --- | --- |
+| Owner acknowledgment | Actual tool metadata is required; coordinator/foreign/mixed owners, duplicate or excessive IDs, missing IDs and extra fields are rejected before writes. Proof binds immutable notification content and current route owner; a reconstructed receiver suppresses the handled pending item while a new attempt still delivers. |
+| Send/ack serialization | The same target OS lock makes an in-progress send/ack return busy. Existing sent, uncertain and committed central records, intents, receipts and outcomes remain byte-for-byte unchanged by a later handled acknowledgment. |
+| Backlog batching | The synthetic host verifies all member intents and their exact batch manifest exist before send. Same-owner CLI/Bot items share one send, another owner is separate, every original prompt remains intact and every item has an independent central ack. |
+| Bounds and UTF-8 | A full batch stays within 256KiB UTF-8, overflow remains unclaimed, and an oversized original remains unchanged as a singleton. A long non-ASCII report survives the real Python driver's streamed JSON output intact. |
+| Recovery and uncertainty | Partial claim contention leaves unsent items pending. A durable batch receipt repairs missing per-item fanout after reconstruction without another send; an ambiguous batch never replays, while an independent new job works. Wrong owner/item or malformed batch evidence cannot supply a recovery receipt. |
+| Authorization boundaries | Revocation during preflight leaves all items unclaimed; revocation after a claim retains it without sending. Revocation after batch submission still permits acknowledgment of that exact prior receipt. Existing delegation, lease, route, attachment and prelaunch-rejection regressions remain covered. |
+
+Per-item assertions now locate the original notification within a batch instead of requiring one host call per item. Identity, original-report, snapshot, source and one-attempt checks are retained.
+
+These tests use this public package's bundled ledger, synthetic MCP host, synthetic identities and fresh temporary state. No production mailbox, private configuration, real provider, real notification or shared App restart was used. Other operating systems, minimum runtime versions, fresh marketplace installation and a real Desktop delivery/continuation on 0.5.0 remain unverified. Earlier installation or private-deployment evidence does not replace those checks.
+
+## Preserved 0.4.1 evidence
 
 2026-10-17 (Asia/Taipei), Windows, Node 24.19.0 and Python 3.12.10.
 

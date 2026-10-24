@@ -27,9 +27,19 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   if (params.name === 'send_message_to_thread') {
     const id = params.arguments.prompt.match(/^\[app-mailbox:([^\]]+)\]/)?.[1];
     const fault = params.arguments.prompt.match(/^\[app-mailbox-transport-fault:([^\]]+)\]/)?.[1];
-    const intentPath = id ? path.join(process.env.TEST_STATE, 'app-mailbox', 'deliveries', key(id), 'intent.json')
-      : path.join(process.env.TEST_STATE, 'app-mailbox', 'faults', fault, 'intent.json');
-    if (!fs.existsSync(intentPath)) throw new Error('Send happened before durable intent publication');
+    if (id === 'batch') {
+      const members = [...params.arguments.prompt.matchAll(/^\[app-mailbox:([^\]]+)\]/gm)].map(match => match[1]).filter(value => value !== 'batch');
+      if (members.length < 2) throw new Error('Batch must contain original notifications');
+      const intents = members.map(member => JSON.parse(fs.readFileSync(path.join(process.env.TEST_STATE, 'app-mailbox', 'deliveries', key(member), 'intent.json'), 'utf8')));
+      const manifest = JSON.parse(fs.readFileSync(path.join(process.env.TEST_STATE, 'app-mailbox', 'wake-batches', intents[0].batchId, 'manifest.json'), 'utf8'));
+      if (JSON.stringify(manifest.members) !== JSON.stringify(members) || manifest.ownerThreadId !== params.arguments.threadId
+        || intents.some((intent, index) => intent.batchId !== manifest.id || intent.deliveryId !== members[index]
+          || intent.ownerThreadId !== manifest.ownerThreadId)) throw new Error('Batch send must follow all exact durable member intents');
+    } else {
+      const intentPath = id ? path.join(process.env.TEST_STATE, 'app-mailbox', 'deliveries', key(id), 'intent.json')
+        : path.join(process.env.TEST_STATE, 'app-mailbox', 'faults', fault, 'intent.json');
+      if (!fs.existsSync(intentPath)) throw new Error('Send happened before durable intent publication');
+    }
     if (control.sendMode === 'timeout') return;
     const result = { isError: control.sendMode === 'reject', content: [{ type: 'text', text: JSON.stringify({ threadId: params.arguments.threadId }) }] };
     if (control.sendDelayMs) return setTimeout(() => respond(request.id, result), control.sendDelayMs);

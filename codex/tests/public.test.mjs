@@ -13,6 +13,7 @@ import { OfficialTools, resolveInstalledOfficialEntry } from '../plugin/lib/offi
 import { handleRequest, TOOLS, GRANT_DELEGATION_TOOL as GRANT, REVOKE_DELEGATION_TOOL as REVOKE } from '../plugin/lib/mcp-service.mjs';
 import { readJson, createJsonOnce } from '../plugin/lib/store.mjs';
 import { key } from '../plugin/lib/ids.mjs';
+import { WakeBatchJournal, combinedPrompt, selectPromptBatch, MAX_WAKE_PROMPT_BYTES } from '../plugin/lib/wake-batch.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const ledger = path.join(root, 'tools', 'mailbox.py');
@@ -57,9 +58,9 @@ function fixture(t) {
   });
   return f;
 }
-function job(f, jobId = 'job', attempt = '1', source = 'cli', marker = {}) {
+function job(f, jobId = 'job', attempt = '1', source = 'cli', marker = {}, project = 'demo') {
   const outbox = path.join(f.base, 'outboxes', `${jobId}-${attempt}`); fs.mkdirSync(outbox, { recursive: true });
-  const registration = cli(f, ['register', '--project', 'demo', '--job', jobId, '--attempt', attempt, '--outbox', outbox, '--source', source]);
+  const registration = cli(f, ['register', '--project', project, '--job', jobId, '--attempt', attempt, '--outbox', outbox, '--source', source]);
   fs.writeFileSync(path.join(outbox, 'REPORT.md'), `Original ${source} report ${jobId}/${attempt}.\n`);
   fs.writeFileSync(path.join(outbox, 'result.txt'), 'Example artifact');
   write(path.join(outbox, 'READY.json'), { status: 'completed', deliverables: ['result.txt'], notes: 'Example', ...marker });
@@ -205,7 +206,7 @@ test('configuration and MCP identity fail closed; absent launch pipe or actor ca
   const f = fixture(t);
   const homes = { CODEX_HOME: path.join(f.base, 'default-home'), HOME: f.base, USERPROFILE: f.base };
   assert.throws(() => loadConfig(homes), /configuration is required/);
-  assert.equal(TOOLS.length, 5); assert.ok(TOOLS.every(tool => !tool.name.includes('subscription')));
+  assert.equal(TOOLS.length, 6); assert.ok(TOOLS.every(tool => !tool.name.includes('subscription')));
   const missing = spawnSync(process.execPath, [path.join(root, 'plugin', 'server.mjs')], { env: homes, encoding: 'utf8', windowsHide: true });
   assert.equal(missing.status, 1); assert.ok(missing.stderr.includes('configuration is required'));
   const standard = { mailboxRoot: '../ledger', stateDir: '../state', coordinatorThreadId: coordinator, pythonExecutable: python };
@@ -250,8 +251,8 @@ test('portable CLI/Bot READY contract snapshots original reports and delivers ex
   e.startWatch(coordinator); await e.tick();
   for (const item of [a, b]) {
     const value = central(f, item.id); assert.equal(value.state, 'sent');
-    const sent = deliveries(f).find(event => event.params.arguments.prompt.startsWith(`[app-mailbox:${item.id}]`));
-    assert.equal(sent.params.arguments.prompt, value.prompt); assert.equal(sent.params.arguments.threadId, owner);
+    const sent = deliverySends(f, item.id)[0];
+    assert.ok(sent.params.arguments.prompt.includes(value.prompt)); assert.equal(sent.params.arguments.threadId, owner);
     assert.deepEqual(sent.params._meta, { 'x-codex-turn-metadata': { thread_id: actor } });
     assert.deepEqual(Object.keys(sent.params.arguments).sort(), ['prompt', 'threadId']);
     assert.equal(value.prompt.split('\n')[1], '此消息由收件系统自动投递。');
@@ -260,8 +261,8 @@ test('portable CLI/Bot READY contract snapshots original reports and delivers ex
   }
   // Later same-source events/READY changes do not replace a consumed attempt.
   write(path.join(a.outbox, 'READY.json'), { status: 'failed', deliverables: [] });
-  await e.tick(); assert.equal(deliveries(f).length, 2); assert.equal(central(f, a.id).state, 'sent');
-  const next = job(f, 'cli-job', '2'); await e.tick(); assert.equal(central(f, next.id).state, 'sent'); assert.equal(deliveries(f).length, 3);
+  await e.tick(); assert.equal(deliveries(f).length, 1); assert.equal(central(f, a.id).state, 'sent');
+  const next = job(f, 'cli-job', '2'); await e.tick(); assert.equal(central(f, next.id).state, 'sent'); assert.equal(deliveries(f).length, 2);
   const intent = readJson(e.localPath(a.id, 'intent.json')); assert.equal(intent.permissionRegisteredBy, coordinator); assert.equal(intent.callerThreadId, actor);
   assert.equal(Object.hasOwn(intent, 'promptSha256'), false); assert.equal(Object.hasOwn(intent, 'pipeFingerprint'), false);
   e.stopWatch(owner, { project: 'demo' }); assert.equal(e.getStatus(owner).projects[0].watchEnabled, false);
@@ -342,12 +343,12 @@ test('standard stdio process restart recovers durable exact receipt with ack onl
   assert.throws(() => resolveInstalledOfficialEntry({ cacheRoot: cache, appToolsEntry: path.join(root, 'tests', 'fixtures', 'fake-host.mjs') }), /valid server.mjs/);
   const first = service(f, path.join(root, 'tests', 'fixtures', 'crash-service.mjs')); let second;
   try {
-    assert.equal((await first.call('initialize')).serverInfo.version, '0.4.1');
+    assert.equal((await first.call('initialize')).serverInfo.version, '0.5.0');
     await first.call('tools/call', { name: 'start_app_mailbox_watch', arguments: { project: 'demo' }, _meta: { 'x-codex-turn-metadata': { thread_id: owner } } });
     await until(() => first.child.exitCode === 17); assert.equal(deliveries(f).length, 1); assert.equal(central(f, item.id).state, 'sending');
     second = service(f, path.join(root, 'plugin', 'server.mjs')); await second.call('initialize');
     await until(() => central(f, item.id).state === 'sent'); assert.equal(deliveries(f).length, 1);
-    assert.equal((await second.call('tools/list')).tools.length, 5); assert.equal(second.stderr(), '');
+    assert.equal((await second.call('tools/list')).tools.length, 6); assert.equal(second.stderr(), '');
   } finally {
     if (first.child.exitCode === null) { first.child.kill(); await once(first.child, 'close'); }
     if (second) { second.child.stdin.end(); await once(second.child, 'close'); }
@@ -379,13 +380,13 @@ test('public prelaunch rejection contract binds identity and paths, delivers onc
   assert.equal(central(f, good.id).state, 'sent'); assert.equal(central(f, existing.id).state, 'sent');
   const report = fs.readFileSync(path.join(good.outbox, 'REPORT.md'), 'utf8');
   assert.ok(report.includes('not an executor report')); assert.ok(report.includes('guard.log')); assert.equal(report.includes('DUMMY_SECRET'), false);
-  const notification = deliveries(f).find(event => event.params.arguments.prompt.startsWith(`[app-mailbox:${good.id}]`));
+  const notification = deliverySends(f, good.id)[0];
   assert.equal(notification.params.arguments.threadId, owner); assert.ok(notification.params.arguments.prompt.includes('launch-failure receipt'));
   for (const item of [wrong, escaping, unknown, partial, claimed, retired]) assert.equal(fs.existsSync(path.join(item.outbox, 'READY.json')), false);
   assert.equal(fs.readFileSync(path.join(partial.outbox, 'REPORT.md'), 'utf8'), 'Preserved partial report');
   assert.equal(fs.readFileSync(path.join(existing.outbox, 'REPORT.md'), 'utf8'), 'Original executor report');
   const readyBytes = fs.readFileSync(path.join(good.outbox, 'READY.json')); const sentBytes = fs.readFileSync(path.join(f.mailboxRoot, 'deliveries', `${good.id}.json`));
-  await e.tick(); assert.equal(deliveries(f).length, 2); assert.deepEqual(fs.readFileSync(path.join(good.outbox, 'READY.json')), readyBytes);
+  await e.tick(); assert.equal(deliveries(f).length, 1); assert.deepEqual(fs.readFileSync(path.join(good.outbox, 'READY.json')), readyBytes);
   assert.deepEqual(fs.readFileSync(path.join(f.mailboxRoot, 'deliveries', `${good.id}.json`)), sentBytes);
   assert.equal(cli(f, ['prelaunch', good.id]).prelaunch_ready_created, false);
   const newer = prepare('prelaunch-good', '2'); await e.tick(); assert.equal(central(f, newer.id).state, 'sent');
@@ -513,7 +514,7 @@ async function permitAndGrant(f) {
 async function stopService(s) {
   if (s && s.child.exitCode === null) { s.child.stdin.end(); await once(s.child, 'close'); }
 }
-const deliverySends = (f, id) => deliveries(f).filter(item => item.params.arguments.prompt.startsWith(`[app-mailbox:${id}]`));
+const deliverySends = (f, id) => deliveries(f).filter(item => item.params.arguments.prompt.split('\n').includes(`[app-mailbox:${id}]`));
 
 test('explicit delegation tools require actual coordinator identity, no overrides and a valid existing all-watch epoch', async t => {
   const f = fixture(t); const e = delegated(f);
@@ -558,7 +559,7 @@ test('public stdio grant then service reload with no actor or tools/call resumes
   const f = fixture(t); write(f.config, { ...JSON.parse(fs.readFileSync(f.config)), pollIntervalMs: 1000 });
   const env = { ...f.env }; delete env.CODEX_THREAD_ID;
   first = service(f, path.join(root, 'plugin', 'server.mjs'), env);
-  assert.equal((await first.call('initialize')).serverInfo.version, '0.4.1');
+  assert.equal((await first.call('initialize')).serverInfo.version, '0.5.0');
   const params = name => ({ name, arguments: {}, _meta: { 'x-codex-turn-metadata': { thread_id: coordinator } } });
   toolValue(await first.call('tools/call', params('start_app_mailbox_watch')));
   const grantId = toolValue(await first.call('tools/call', params(GRANT))).delegation.grantId;
@@ -566,12 +567,12 @@ test('public stdio grant then service reload with no actor or tools/call resumes
   const cliJob = job(f, 'reload-cli'); const botJob = job(f, 'reload-bot', '1', 'bot');
   write(f.control, { ownerStatus: 'notLoaded' });
   second = service(f, path.join(root, 'plugin', 'server.mjs'), { ...env, CODEX_APP_TOOLS_PIPE_PATH: 'second-launch-pipe' });
-  await second.call('initialize'); assert.equal((await second.call('tools/list')).tools.length, 5);
+  await second.call('initialize'); assert.equal((await second.call('tools/list')).tools.length, 6);
   await until(() => [cliJob, botJob].every(item => central(f, item.id)?.state === 'sent'));
   assert.equal(second.toolCalls(), 0, 'startup/list only, no identity-binding call or hook');
   for (const item of [cliJob, botJob]) {
     const sent = deliverySends(f, item.id); assert.equal(sent.length, 1);
-    assert.equal(sent[0].params.arguments.prompt, central(f, item.id).prompt);
+    assert.ok(sent[0].params.arguments.prompt.includes(central(f, item.id).prompt));
     assert.equal(sent[0].params.arguments.threadId, owner);
     assert.equal(sent[0].params._meta['x-codex-turn-metadata'].thread_id, coordinator);
     assert.deepEqual(Object.keys(sent[0].params.arguments).sort(), ['prompt', 'threadId']);
@@ -672,12 +673,17 @@ test('revocation after leader/target lease, scan, read, claim, intent or bridge-
     await d.tick(); assert.equal(triggered, true); assert.equal(d.leader, null);
     if (stage === 'send') {
       const submitted = [item, next].filter(x => deliverySends(f, x.id).length);
-      assert.equal(submitted.length, 1); assert.equal(central(f, submitted[0].id).state, 'sent');
-      assert.ok(readJson(d.localPath(submitted[0].id, 'receipt.json')));
+      assert.equal(deliveries(f).length, 1, 'one batch was already submitted before revocation');
+      assert.equal(submitted.length, 2);
+      for (const member of submitted) {
+        assert.equal(central(f, member.id).state, 'sent');
+        assert.ok(readJson(d.localPath(member.id, 'receipt.json')));
+      }
     } else {
       assert.equal(deliveries(f).length, 0); assert.equal(faults(f).length, 0);
       if (['claim', 'intent'].includes(stage)) {
-        assert.equal([item, next].filter(x => central(f, x.id)?.state === 'sending').length, 1, 'permanent claim retained');
+        assert.equal([item, next].filter(x => central(f, x.id)?.state === 'sending').length, stage === 'claim' ? 1 : 2,
+          'retain the first claim on claim-time revocation, or all batch members when send is denied after intents');
       } else assert.ok([item, next].every(x => !central(f, x.id) || central(f, x.id).state === 'pending'));
     }
     if (stage === 'read') assert.ok([item, next].every(x => !readJson(d.localPath(x.id, 'wait.json'))), 'no new outcome after read authority ended');
@@ -718,4 +724,182 @@ test('two delegated stdio instances share one OS leader; its exit releases owner
   at += 60001; const third = job(f, 'takeover'); await standby.tick();
   assert.equal(central(f, third.id).state, 'sent'); assert.equal(deliverySends(f, third.id).length, 1);
   assert.equal(readJson(standby.leaderPath()).instanceId, standby.instanceId);
+});
+
+const acknowledge = (e, caller, ids, extra = {}) => handleRequest({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: {
+  name: 'ack_app_mailbox_delivery', arguments: { deliveryIds: ids, ...extra },
+  _meta: { 'x-codex-turn-metadata': { thread_id: caller } },
+} }, e, {});
+
+test('reliability: exact-owner handled proof survives reconstruction without fake sent; a new attempt still wakes', async t => {
+  const f = fixture(t); const old = job(f, 'manual'); const e = engine(f);
+  await e.driver.run('scan');
+  const result = await acknowledge(e, owner, [old.id]); assert.equal(result.isError, false);
+  const recorded = toolValue(result).acknowledgments[0];
+  assert.equal(recorded.outcome, 'recorded'); assert.equal(recorded.pendingNotificationSuppressed, true);
+  assert.equal(recorded.notificationAccepted, false); assert.equal(recorded.businessAcceptanceRecorded, false);
+  assert.equal(toolValue(await acknowledge(e, owner, [old.id])).acknowledgments[0].outcome, 'already_recorded');
+  e.startWatch(owner, { project: 'demo' }); await e.tick();
+  assert.equal(central(f, old.id).state, 'pending'); assert.equal(deliveries(f).length, 0);
+  assert.equal(fs.existsSync(path.join(f.mailboxRoot, 'claims', old.id + '.lock')), false);
+  assert.equal(e.getStatus(owner, 'demo').deliveries[0].ownerHandled, true);
+  const exited = once(e.leader.child, 'close'); e.close(); await exited;
+  const newer = job(f, 'manual', '2'); const next = engine(f); await next.tick();
+  assert.equal(central(f, newer.id).state, 'sent'); assert.equal(deliveries(f).length, 1);
+  assert.equal(readJson(next.localPath(old.id, 'outcome.json')).status, 'suppressed');
+  assert.equal(central(f, old.id).state, 'pending');
+});
+
+test('reliability: ack rejects foreign/mixed owners and malformed requests before any write', async t => {
+  const f = fixture(t); const a = job(f, 'owned');
+  cli(f, ['route', '--project', 'other', '--owner', 'other-lead']);
+  const b = job(f, 'foreign', '1', 'cli', {}, 'other'); const e = engine(f); await e.driver.run('scan');
+  for (const [caller, ids, extra] of [
+    [coordinator, [a.id]], ['intruder', [a.id]], [owner, [a.id, b.id]], [owner, []],
+    [owner, [a.id, a.id]], [owner, ['../outside']], [owner, ['missing']],
+    [owner, Array.from({ length: 33 }, (_, i) => 'item' + i)], [owner, [a.id], { target: owner }],
+  ]) {
+    assert.equal((await acknowledge(e, caller, ids, extra)).isError, true);
+    assert.equal(fs.existsSync(e.localPath(a.id, 'handled.json')), false);
+    assert.equal(fs.existsSync(e.localPath(b.id, 'handled.json')), false);
+  }
+  await assert.rejects(e.acknowledgeDeliveries(owner, { deliveryIds: [a.id] }, 'persisted_delegation'), /actual tool caller/);
+  assert.equal((await acknowledge(e, owner, [a.id])).isError, false);
+  const snapshot = central(f, a.id); write(path.join(f.mailboxRoot, 'deliveries', a.id + '.json'), { ...snapshot, prompt: snapshot.prompt + 'changed' });
+  assert.equal((await acknowledge(e, owner, [a.id])).isError, true, 'a proof cannot be rebound to changed content');
+  write(path.join(f.mailboxRoot, 'deliveries', a.id + '.json'), snapshot);
+  cli(f, ['route', '--project', 'demo', '--owner', 'replacement-owner', '--replace-owner']);
+  assert.equal((await acknowledge(e, owner, [a.id])).isError, true, 'the former owner cannot acknowledge after migration');
+});
+
+test('reliability: ack shares target lock and preserves sent, uncertain and committed evidence', async t => {
+  const f = fixture(t); const pending = job(f, 'pending'); const sent = job(f, 'accepted'); const unknown = job(f, 'ambiguous');
+  const e = engine(f); e.startWatch(coordinator); await e.canPoll(); await e.driver.run('scan');
+  const lock = await e.driver.acquireTarget(owner, e.stateDir);
+  try {
+    assert.equal(toolValue(await acknowledge(e, owner, [pending.id])).outcome, 'target_send_busy');
+    assert.equal(fs.existsSync(e.localPath(pending.id, 'handled.json')), false);
+  } finally { await lock.release(); }
+  await e.processReady(sent); write(f.control, { sendMode: 'reject' }); await e.processReady(unknown);
+  await e.driver.run('claim', { id: pending.id });
+  const files = [sent, unknown].flatMap(item => ['intent.json', 'receipt.json', 'outcome.json'].map(name => e.localPath(item.id, name)));
+  files.push(...[sent, unknown, pending].map(item => path.join(f.mailboxRoot, 'deliveries', item.id + '.json')));
+  const before = files.map(filename => fs.readFileSync(filename));
+  const values = toolValue(await acknowledge(e, owner, [sent.id, unknown.id, pending.id])).acknowledgments;
+  assert.ok(values.every(value => value.pendingNotificationSuppressed === false && value.businessAcceptanceRecorded === false));
+  files.forEach((filename, i) => assert.deepEqual(fs.readFileSync(filename), before[i]));
+  assert.equal(deliveries(f).length, 2);
+});
+
+test('reliability: one real fake-host send batches one owner only and preserves original prompts and item acks', async t => {
+  const f = fixture(t); const a = job(f, 'first'); const b = job(f, 'second', '1', 'bot');
+  cli(f, ['route', '--project', 'other', '--owner', 'other-lead']);
+  const c = job(f, 'separate', '1', 'cli', {}, 'other'); const e = engine(f); e.startWatch(coordinator);
+  await e.tick(); assert.equal(deliveries(f).length, 2);
+  const wake = deliveries(f).find(event => event.params.arguments.threadId === owner);
+  assert.deepEqual(Object.keys(wake.params.arguments).sort(), ['prompt', 'threadId']);
+  assert.equal(wake.params._meta['x-codex-turn-metadata'].thread_id, actor);
+  for (const item of [a, b]) {
+    assert.ok(wake.params.arguments.prompt.includes(central(f, item.id).prompt));
+    assert.equal(central(f, item.id).state, 'sent');
+    assert.equal(readJson(e.localPath(item.id, 'outcome.json')).status, 'sent');
+  }
+  assert.ok(!wake.params.arguments.prompt.includes(central(f, c.id).prompt));
+  await e.tick(); assert.equal(deliveries(f).length, 2);
+});
+
+test('reliability: UTF-8 batch cap leaves overflow unclaimed and oversized originals stay single', async t => {
+  const f = fixture(t); const items = ['a', 'b', 'c'].map(id => job(f, id));
+  for (const item of items) fs.writeFileSync(path.join(item.outbox, 'REPORT.md'), '中文😀'.repeat(11000));
+  const e = engine(f); e.startWatch(coordinator); await e.tick();
+  assert.equal(deliveries(f).length, 1);
+  const first = deliveries(f)[0].params.arguments.prompt;
+  assert.ok(Buffer.byteLength(first, 'utf8') <= MAX_WAKE_PROMPT_BYTES);
+  const left = items.filter(item => central(f, item.id).state === 'pending'); assert.equal(left.length, 1);
+  assert.equal(fs.existsSync(path.join(f.mailboxRoot, 'claims', left[0].id + '.lock')), false);
+  for (const item of items.filter(value => !left.includes(value))) assert.ok(first.includes(central(f, item.id).prompt));
+  await e.tick(); assert.equal(deliveries(f).length, 2);
+  const large = job(f, 'large'); const tail = job(f, 'tail');
+  fs.writeFileSync(path.join(large.outbox, 'REPORT.md'), '中文😀'.repeat(30000)); await e.driver.run('scan');
+  const original = central(f, large.id).prompt;
+  await e.processReadyBatch([large, tail]);
+  assert.equal(deliveries(f).at(-1).params.arguments.prompt, original);
+  assert.equal(central(f, tail.id).state, 'pending');
+  assert.equal(fs.existsSync(path.join(f.mailboxRoot, 'claims', tail.id + '.lock')), false);
+});
+
+test('reliability: driver preserves long non-ASCII JSON across native stream chunks', async t => {
+  const f = fixture(t); const item = job(f, 'unicode');
+  const report = '边界😀α\n'.repeat(60000); fs.writeFileSync(path.join(item.outbox, 'REPORT.md'), report);
+  const e = engine(f); await e.driver.run('scan');
+  const claimed = (await e.driver.run('claim', { id: item.id })).result;
+  assert.ok(claimed.prompt.endsWith(report)); assert.equal(claimed.prompt, central(f, item.id).prompt);
+  assert.equal(claimed.prompt.includes('\ufffd'), false);
+});
+
+test('reliability: busy partial claims do not consume overflow or interfere with accepted members', async t => {
+  const f = fixture(t); const a = job(f, 'a'); const b = job(f, 'b'); const c = job(f, 'c');
+  const e = engine(f); e.startWatch(coordinator); const run = e.driver.run.bind(e.driver);
+  e.driver.run = (operation, args = {}) => operation === 'claim' && args.id === b.id ? Promise.resolve({ busy: true }) : run(operation, args);
+  await e.tick(); assert.equal(deliveries(f).length, 1);
+  assert.equal(central(f, a.id).state, 'sent'); assert.equal(central(f, c.id).state, 'sent');
+  assert.equal(central(f, b.id).state, 'pending'); assert.equal(fs.existsSync(e.localPath(b.id, 'intent.json')), false);
+  e.driver.run = run; await e.tick(); assert.equal(deliveries(f).length, 2); assert.equal(central(f, b.id).state, 'sent');
+});
+
+test('reliability: durable batch receipt repairs missing per-item fanout after reconstruction without resend', async t => {
+  const f = fixture(t); const items = [job(f, 'one'), job(f, 'two')]; const e = engine(f); e.startWatch(coordinator);
+  const run = e.driver.run.bind(e.driver);
+  e.driver.run = (operation, args = {}) => operation === 'ack' ? Promise.resolve({ busy: true }) : run(operation, args);
+  await e.tick(); assert.equal(deliveries(f).length, 1);
+  for (const item of items) {
+    assert.equal(central(f, item.id).state, 'sending');
+    assert.equal(readJson(e.localPath(item.id, 'outcome.json')).status, 'receipt_pending_ack');
+    fs.unlinkSync(e.localPath(item.id, 'receipt.json'));
+  }
+  const exited = once(e.leader.child, 'close'); e.close(); await exited;
+  const next = engine(f); await next.tick();
+  for (const item of items) assert.equal(central(f, item.id).state, 'sent');
+  assert.equal(deliveries(f).length, 1);
+});
+
+test('reliability: ambiguous batch never replays after reconstruction while an independent new job works', async t => {
+  const f = fixture(t); const items = [job(f, 'one'), job(f, 'two')]; const e = engine(f);
+  write(f.control, { sendMode: 'timeout' }); e.startWatch(coordinator); await e.tick();
+  assert.equal(deliveries(f).length, 1);
+  for (const item of items) assert.equal(readJson(e.localPath(item.id, 'outcome.json')).status, 'uncertain');
+  const exited = once(e.leader.child, 'close'); e.close(); await exited;
+  write(f.control, {}); const added = job(f, 'fresh'); const next = engine(f); await next.tick();
+  assert.equal(deliveries(f).length, 2); assert.equal(central(f, added.id).state, 'sent');
+  for (const item of items) assert.equal(central(f, item.id).state, 'sending');
+});
+
+test('reliability: revocation during preflight leaves all unclaimed; after one claim retains uncertainty without sending', async t => {
+  for (const phase of ['preflight', 'claim']) {
+    await t.test(phase, async t => {
+      const f = fixture(t); const items = [job(f, 'one'), job(f, 'two')]; const e = engine(f); e.startWatch(coordinator);
+      const read = e.client.readThread.bind(e.client); const run = e.driver.run.bind(e.driver);
+      if (phase === 'preflight') e.client.readThread = async (...args) => { const result = await read(...args); e.stopWatch(coordinator); return result; };
+      else e.driver.run = async (operation, args = {}) => { const result = await run(operation, args); if (operation === 'claim') e.stopWatch(coordinator); return result; };
+      await e.tick(); assert.equal(deliveries(f).length, 0);
+      assert.equal(items.filter(item => central(f, item.id).state === 'sending').length, phase === 'claim' ? 1 : 0);
+      assert.equal(items.filter(item => central(f, item.id).state === 'pending').length, phase === 'claim' ? 1 : 2);
+    });
+  }
+});
+
+test('reliability: batch receipt cannot be borrowed by a different owner, item or malformed manifest', async t => {
+  const f = fixture(t); const journal = new WakeBatchJournal(path.join(f.base, 'journal')); const id = journal.allocate();
+  journal.publish(id, owner, ['member'], new Date().toISOString());
+  journal.saveReceipt(id, { content: [{ type: 'text', text: JSON.stringify({ threadId: owner }) }] });
+  const intent = { batchId: id, deliveryId: 'member', ownerThreadId: owner };
+  assert.ok(journal.receipt(intent, 'member', owner));
+  assert.equal(journal.receipt(intent, 'foreign', owner), null);
+  assert.equal(journal.receipt(intent, 'member', 'other'), null);
+  assert.equal(journal.receipt({ ...intent, batchId: '../outside' }, 'member', owner), null);
+  write(journal.path(id, 'manifest.json'), { id, ownerThreadId: owner, members: ['member'] });
+  assert.equal(journal.receipt(intent, 'member', owner), null);
+  const prompts = ['x'.repeat(MAX_WAKE_PROMPT_BYTES), 'next'];
+  assert.deepEqual(selectPromptBatch(prompts, value => value, 'label'), [prompts[0]]);
+  assert.equal(combinedPrompt([prompts[0]], 'label'), prompts[0]);
 });
