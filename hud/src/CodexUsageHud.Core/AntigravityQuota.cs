@@ -98,11 +98,15 @@ public sealed class AntigravityCliClient : IAntigravityUsageClient
 
         var stdout = await stdoutTask.ConfigureAwait(false);
         var stderr = await stderrTask.ConfigureAwait(false);
-        if (LooksLikeJson(stdout))
+        return Interpret(process.ExitCode, stdout, stderr);
+    }
+
+    internal static AntigravityUsageRead Interpret(int exitCode, string stdout, string stderr)
+    {
+        if (exitCode == 0 && LooksLikeJson(stdout))
             return new AntigravityUsageRead(AntigravityUsageKind.Json, stdout.Trim());
 
-        var kind = ClassifyFailure(stdout + "\n" + stderr, process.ExitCode);
-        return new AntigravityUsageRead(kind, null);
+        return new AntigravityUsageRead(ClassifyFailure(stdout + "\n" + stderr, exitCode), null);
     }
 
     internal static string? ResolveExecutable()
@@ -236,7 +240,7 @@ public static class AntigravityQuotaParser
             }
 
             if (!root.TryGetProperty("command", out var command) || command.ValueKind != JsonValueKind.Object ||
-                !command.TryGetProperty("name", out var nameNode) ||
+                !command.TryGetProperty("name", out var nameNode) || nameNode.ValueKind != JsonValueKind.String ||
                 !string.Equals(nameNode.GetString(), "usage", StringComparison.Ordinal) ||
                 !command.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object ||
                 !data.TryGetProperty("groups", out var groups) || groups.ValueKind != JsonValueKind.Array)

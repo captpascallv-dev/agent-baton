@@ -14,9 +14,10 @@ internal static class AntigravityQuotaChecks
 {
     public static int Run(string[] args)
     {
-        if (args.Length != 1 || string.IsNullOrWhiteSpace(args[0]))
+        var skipUi = args.Length == 2 && string.Equals(args[1], "--skip-ui", StringComparison.Ordinal);
+        if (args.Length < 1 || args.Length > 2 || string.IsNullOrWhiteSpace(args[0]) || (args.Length == 2 && !skipUi))
         {
-            Console.Error.WriteLine("usage: --antigravity-quota <output-directory>");
+            Console.Error.WriteLine("usage: --antigravity-quota <output-directory> [--skip-ui]");
             return 2;
         }
 
@@ -31,7 +32,10 @@ internal static class AntigravityQuotaChecks
             AdapterStatuses(log);
             SettingsStayOffUntilEnabled(log);
             CoordinatorCacheTimeoutAndRetention(log).GetAwaiter().GetResult();
-            SyntheticSevenSlotLayout(output, log);
+            if (skipUi)
+                log.AppendLine("ui_skipped_existing_screenshots_remain_valid");
+            else
+                SyntheticSevenSlotLayout(output, log);
             var logPath = Path.Combine(output, "antigravity-checks.log");
             File.WriteAllText(logPath, log.ToString());
             Console.WriteLine("antigravity-quota ok");
@@ -120,7 +124,18 @@ internal static class AntigravityQuotaChecks
             out var limitedError);
         Equal(0, limited.Count);
         Equal("antigravity_rate_limited", limitedError);
+        foreach (var name in new[] { "1", """{"raw":1}""", """["usage"]""" })
+        {
+            var malformed = AntigravityQuotaParser.Parse(
+                "{\"status\":\"SUCCESS\",\"command\":{\"name\":" + name +
+                ",\"data\":{\"groups\":[{\"name\":\"Gemini Models\",\"buckets\":[{\"id\":\"gemini-weekly\",\"name\":\"Weekly\",\"window\":\"weekly\",\"remaining_fraction\":0.5,\"reset_time\":\"2026-11-06T18:22:57Z\"}]}]}}}",
+                out var malformedError);
+            Equal(0, malformed.Count);
+            Equal("antigravity_parse_failed", malformedError);
+        }
+
         log.AppendLine("parser missing_fraction_and_credit_and_status_codes_drop_percent");
+        log.AppendLine("parser malformed_command_name_number_object_array=antigravity_parse_failed");
     }
 
     private static void ExpiredMissingResetAndUnknownWindow(StringBuilder log)
@@ -225,6 +240,8 @@ internal static class AntigravityQuotaChecks
         await TimeoutCancelsWithoutBlockingOtherSlots(log).ConfigureAwait(false);
         await RateLimitHoldsForFiveMinutes(log).ConfigureAwait(false);
         await SuccessCacheRetainsTransientAndDropsSignIn(log).ConfigureAwait(false);
+        await MalformedNameDropsPreviousPercent(log).ConfigureAwait(false);
+        await AbnormalExitKeepsPriorQuota(log).ConfigureAwait(false);
     }
 
     private static async Task DisabledDoesNotCall(StringBuilder log)
@@ -337,6 +354,72 @@ internal static class AntigravityQuotaChecks
         Equal(0, disconnected.Windows.Count);
         True(!disconnected.UpdateDelayed, "sign_in_retained_old_windows");
         log.AppendLine("coordinator cache_1m_no_call retain_timeout drop_sign_in");
+    }
+
+    private static async Task MalformedNameDropsPreviousPercent(StringBuilder log)
+    {
+        var client = new ScriptedClient(_ => Json(LiveFixture()));
+        var clock = new MutableClock(ParseUtc("2026-10-30T18:00:00Z"));
+        var coordinator = Coordinator(client, clock);
+        var settings = BoardSettings(antigravity: true);
+        var live = await coordinator.RefreshAsync(settings, PrimaryObservation(clock.Utc), CancellationToken.None)
+            .ConfigureAwait(false);
+        Equal("91.28", ProviderQuotaPresentation.FormatFinePercent(
+            live.Find(ProviderSlotIds.Antigravity)!.GlanceRemainingPercent!.Value));
+        clock.Utc = clock.Utc.AddMinutes(5);
+        client.Next = _ => Json(
+            """
+            {"status":"SUCCESS","command":{"name":1,"data":{"groups":[{"name":"Gemini Models","buckets":[{"id":"gemini-weekly","name":"Weekly","window":"weekly","remaining_fraction":0.5,"reset_time":"2026-11-20T00:00:00Z"}]}]}}}
+            """);
+        var failed = await coordinator.RefreshAsync(settings, PrimaryObservation(clock.Utc), CancellationToken.None)
+            .ConfigureAwait(false);
+        var slot = failed.Find(ProviderSlotIds.Antigravity)!;
+        Equal(2, client.Calls);
+        Equal("antigravity_parse_failed", slot.ErrorCode);
+        Equal(QuotaSlotStatus.Unavailable, slot.Status);
+        Equal(0, slot.Windows.Count);
+        True(slot.GlanceRemainingPercent is null, "malformed_name_retained_percent");
+        True(!slot.UpdateDelayed, "malformed_name_marked_delayed");
+        Equal(80d, failed.PrimaryCodex!.GlanceRemainingPercent);
+        log.AppendLine("coordinator malformed_name_drops_previous_percent");
+    }
+
+    private static async Task AbnormalExitKeepsPriorQuota(StringBuilder log)
+    {
+        const string fresh = """
+            {"status":"SUCCESS","command":{"name":"usage","data":{"groups":[{"name":"Gemini Models","buckets":[{"id":"gemini-weekly","name":"Weekly","window":"weekly","remaining_fraction":0.5,"reset_time":"2026-11-20T00:00:00Z"}]}]}}}
+            """;
+        var rejected = AntigravityCliClient.Interpret(1, fresh, "");
+        Equal(AntigravityUsageKind.Failed, rejected.Kind);
+        True(rejected.Json is null, "nonzero_exit_published_stdout");
+        var limited = AntigravityCliClient.Interpret(3, fresh, "429 too many requests");
+        Equal(AntigravityUsageKind.RateLimited, limited.Kind);
+        True(limited.Json is null, "nonzero_exit_kept_json");
+        var accepted = AntigravityCliClient.Interpret(0, fresh, "");
+        Equal(AntigravityUsageKind.Json, accepted.Kind);
+        var parsed = AntigravityQuotaParser.Parse(accepted.Json, out var parsedError);
+        Equal<string?>(null, parsedError);
+        Equal(1, parsed.Count);
+        Equal("50", ProviderQuotaPresentation.FormatFinePercent(parsed[0].RemainingPercent!.Value));
+
+        var client = new ScriptedClient(_ => Json(LiveFixture()));
+        var clock = new MutableClock(ParseUtc("2026-10-30T18:00:00Z"));
+        var coordinator = Coordinator(client, clock);
+        var settings = BoardSettings(antigravity: true);
+        await coordinator.RefreshAsync(settings, PrimaryObservation(clock.Utc), CancellationToken.None)
+            .ConfigureAwait(false);
+        clock.Utc = clock.Utc.AddMinutes(5);
+        client.Next = _ => Task.FromResult(rejected);
+        var delayed = await coordinator.RefreshAsync(settings, PrimaryObservation(clock.Utc), CancellationToken.None)
+            .ConfigureAwait(false);
+        var slot = delayed.Find(ProviderSlotIds.Antigravity)!;
+        Equal("antigravity_cli_failed", slot.ErrorCode);
+        Equal(QuotaSlotStatus.Stale, slot.Status);
+        True(slot.UpdateDelayed, "abnormal_exit_not_retained");
+        Equal(5, slot.Windows.Count);
+        Equal("91.28", ProviderQuotaPresentation.FormatFinePercent(slot.GlanceRemainingPercent!.Value));
+        Equal(80d, delayed.PrimaryCodex!.GlanceRemainingPercent);
+        log.AppendLine("coordinator abnormal_exit_keeps_prior_quota_not_stdout");
     }
 
     private static void SyntheticSevenSlotLayout(string output, StringBuilder log)
