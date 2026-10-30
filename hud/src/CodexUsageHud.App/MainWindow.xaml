@@ -106,6 +106,10 @@
                         <TextBlock Text="CL" FontSize="13" FontWeight="Bold" Foreground="White"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
+                    <Border x:Name="AntigravityMark" CornerRadius="8" Background="{StaticResource HudMarkAntigravity}" Visibility="Collapsed">
+                        <TextBlock Text="A" FontSize="16" FontWeight="Bold" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
                 </Grid>
             </Viewbox>
             <DataTemplate.Triggers>
@@ -128,6 +132,10 @@
                 <DataTrigger Binding="{Binding SlotId}" Value="claude">
                     <Setter TargetName="CodexPrimaryMark" Property="Visibility" Value="Collapsed" />
                     <Setter TargetName="ClaudeMark" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding SlotId}" Value="antigravity">
+                    <Setter TargetName="CodexPrimaryMark" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="AntigravityMark" Property="Visibility" Value="Visible" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
@@ -552,7 +560,7 @@
                                     <CheckBox x:Name="AutoHideCheckBox" Content="停靠边缘时自动隐藏" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,12" Click="OnAutoHideSettingClick" />
                                     <StackPanel x:Name="QuotaSnapshotSettingBlock" Margin="0,4,0,0">
                                         <CheckBox x:Name="QuotaSnapshotCheckBox" Content="导出本机额度快照" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,8,0,4" Click="OnQuotaSnapshotSettingClick" />
-                                        <TextBlock Text="默认关闭。打开后，每次额度刷新把六个槽的窗口、剩余百分比和重置时间写入 %LOCALAPPDATA%\CodexUsageHUD\quota-snapshot.json。只写额度数字和时间，不写账号或凭据。关闭后不再写入。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                        <TextBlock Text="默认关闭。打开后，每次额度刷新把原来六个槽的窗口、剩余百分比和重置时间写入 %LOCALAPPDATA%\CodexUsageHUD\quota-snapshot.json。Antigravity 槽只在界面显示，不写入这份快照。只写额度数字和时间，不写账号或凭据。关闭后不再写入。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,8" />
                                     </StackPanel>
                                     <TextBlock Text="默认停靠方向" Style="{StaticResource Caption}" Margin="0,18,0,8" />
                                     <ComboBox x:Name="DockSideComboBox" Height="40" SelectionChanged="OnDockSideSettingChanged">
@@ -561,12 +569,12 @@
                                     </ComboBox>
                                     <TextBlock Text="收起形态" Style="{StaticResource Caption}" Margin="0,18,0,8" />
                                     <ComboBox x:Name="CompactLayoutComboBox" Height="40" SelectionChanged="OnCompactLayoutChanged">
-                                        <ComboBoxItem Content="六账户细边栏（推荐）" Tag="rail" />
+                                        <ComboBoxItem Content="七账户细边栏（推荐）" Tag="rail" />
                                         <ComboBoxItem Content="原竖向紧凑卡" Tag="card" />
                                     </ComboBox>
                                     <Border Height="1" Background="{StaticResource HudLine}" Margin="0,24" />
-                                    <TextBlock Text="六个额度槽" Style="{StaticResource SectionTitle}" />
-                                    <TextBlock Text="启用后仅用该服务自己的本机登录读取额度。不会改写或复制登录文件。Cursor、Grok、Grok Bot 和 Claude 默认关闭，需在此勾选。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,8,0,12" />
+                                    <TextBlock Text="七个额度槽" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Text="启用后仅用该服务自己的本机登录读取额度。不会改写或复制登录文件。Cursor、Grok、Grok Bot、Claude 和 Antigravity 默认关闭，需在此勾选。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,8,0,12" />
                                     <CheckBox x:Name="SlotCodexPrimaryEnabled" Content="Codex 当前（可进会话分析）" IsChecked="True" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,6" Click="OnProviderSettingsChanged" />
                                     <TextBox x:Name="SlotCodexPrimaryLabel" Height="34" Margin="0,0,0,8" Padding="8,6" LostFocus="OnProviderSettingsChanged" />
                                     <CheckBox x:Name="SlotCodexSecondaryEnabled" Content="Codex 第二账户（仅额度）" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,6" Click="OnProviderSettingsChanged" />
@@ -585,6 +593,9 @@
                                     <CheckBox x:Name="SlotClaudeEnabled" Content="启用 Claude 订阅额度（仅额度）" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,6" Click="OnProviderSettingsChanged" />
                                     <TextBox x:Name="SlotClaudeLabel" Height="34" Margin="0,0,0,8" Padding="8,6" LostFocus="OnProviderSettingsChanged" />
                                     <TextBlock Text="Claude 只读本机 Claude Code 已有 OAuth 登录，请求订阅用量。显示 5 小时和每周全部模型的剩余百分比，以及接口实际返回的模型窗口和重置时间。不分析会话，不从 raw token 或 API key 账单推算。未登录显示未连接；限流或格式不支持时显示不可用。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                    <CheckBox x:Name="SlotAntigravityEnabled" Content="启用 Antigravity 订阅额度（仅额度）" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,6" Click="OnProviderSettingsChanged" />
+                                    <TextBox x:Name="SlotAntigravityLabel" Height="34" Margin="0,0,0,8" Padding="8,6" LostFocus="OnProviderSettingsChanged" />
+                                    <TextBlock Text="Antigravity 用本机已登录的官方 agy，以 --print /usage 读取订阅模型额度。同一组里的模型共用每周和 5 小时窗口，各组和各窗口分开显示，不能相加。G1 付费 credits 不计入百分比。没有重置时间就不显示周期。未登录、过期、限流或格式不符时不显示猜测数字。默认关闭，也不写入六个槽的额度快照。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,8" />
                                     <Border Height="1" Background="{StaticResource HudLine}" Margin="0,24" />
                                     <TextBlock Text="桌面快捷方式" Style="{StaticResource SectionTitle}" />
                                     <TextBlock Text="窗口关闭后，也能从桌面重新打开 HUD。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,8,0,14" />
@@ -820,14 +831,18 @@
                                     <StackPanel Grid.Column="1">
                                         <TextBlock Text="{Binding ShortAlias}" FontSize="14" FontWeight="SemiBold"
                                                    TextWrapping="NoWrap" TextTrimming="None" />
-                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                        <Grid Margin="0,2,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
                                             <TextBlock Text="{Binding GlancePercentText}" FontSize="22" FontWeight="Bold"
                                                        Foreground="{StaticResource HudMint}" VerticalAlignment="Bottom"
                                                        TextTrimming="None" />
-                                            <TextBlock Text="{Binding GlanceWindowCaption}" FontSize="12" Margin="8,0,0,0"
+                                            <TextBlock Grid.Column="1" Text="{Binding GlanceWindowCaption}" FontSize="12" Margin="8,0,0,0"
                                                        Foreground="{StaticResource HudMuted}" VerticalAlignment="Bottom"
                                                        TextWrapping="Wrap" TextTrimming="None" />
-                                        </StackPanel>
+                                        </Grid>
                                         <TextBlock Text="{Binding DelayText}" FontSize="11" Margin="0,1,0,0"
                                                    Foreground="{StaticResource HudMuted}" TextWrapping="Wrap"
                                                    Visibility="{Binding UpdateDelayed, Converter={StaticResource BoolVisibility}}" />
@@ -850,7 +865,7 @@
                 <ItemsControl x:Name="RailTopSlotList" ItemsSource="{Binding Slots}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <UniformGrid Rows="1" Columns="6" />
+                            <UniformGrid Rows="1" Columns="7" />
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
@@ -908,8 +923,19 @@
                                     <StackPanel Grid.Column="1">
                                         <TextBlock Text="{Binding ShortAlias}" FontSize="13" FontWeight="SemiBold"
                                                    TextWrapping="Wrap" TextTrimming="None" />
-                                        <TextBlock Text="{Binding GlancePercentText}" FontSize="22" FontWeight="Bold"
-                                                   Foreground="{StaticResource HudMint}" TextTrimming="None" />
+                                        <TextBlock Text="{Binding GlancePercentText}" FontWeight="Bold"
+                                                   Foreground="{StaticResource HudMint}" TextTrimming="None">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="FontSize" Value="22" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DataContext.TopBarNarrowLayout, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                            <Setter Property="FontSize" Value="15" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                         <TextBlock Text="{Binding DelayText}" FontSize="11" Margin="0,1,0,0"
                                                    Foreground="{StaticResource HudMuted}" TextWrapping="Wrap"
                                                    Visibility="{Binding UpdateDelayed, Converter={StaticResource BoolVisibility}}" />

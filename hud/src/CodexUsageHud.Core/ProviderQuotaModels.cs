@@ -12,10 +12,11 @@ public static class ProviderSlotIds
     public const string Grok = "grok";
     public const string GrokBot = "grok-bot";
     public const string Claude = "claude";
+    public const string Antigravity = "antigravity";
 
     public static readonly IReadOnlyList<string> All = new[]
     {
-        CodexPrimary, CodexSecondary, Cursor, Grok, GrokBot, Claude,
+        CodexPrimary, CodexSecondary, Cursor, Grok, GrokBot, Claude, Antigravity,
     };
 }
 
@@ -26,6 +27,7 @@ public static class ProviderIds
     public const string Grok = "grok";
     public const string GrokBot = "grok-bot";
     public const string Claude = "claude";
+    public const string Antigravity = "antigravity";
 }
 
 public static class SharedWeeklyQuota
@@ -101,6 +103,7 @@ public sealed record ProviderSlotSnapshot(
         ProviderSlotIds.Grok => "Grok",
         ProviderSlotIds.GrokBot => "Bot",
         ProviderSlotIds.Claude => "Claude",
+        ProviderSlotIds.Antigravity => "Agy",
         _ => Label,
     };
 
@@ -214,6 +217,7 @@ public sealed record ProviderAccessSettings(
             new ProviderSlotSettings(ProviderSlotIds.Grok, "Grok", false),
             new ProviderSlotSettings(ProviderSlotIds.GrokBot, "Grok Bot", false),
             new ProviderSlotSettings(ProviderSlotIds.Claude, "Claude 订阅", false),
+            new ProviderSlotSettings(ProviderSlotIds.Antigravity, "Antigravity", false),
         },
         CompactLayoutModes.Rail,
         false);
@@ -403,6 +407,7 @@ public static class ProviderQuotaPresentation
         ProviderSlotIds.Grok => ProviderIds.Grok,
         ProviderSlotIds.GrokBot => ProviderIds.GrokBot,
         ProviderSlotIds.Claude => ProviderIds.Claude,
+        ProviderSlotIds.Antigravity => ProviderIds.Antigravity,
         _ => slotId,
     };
 

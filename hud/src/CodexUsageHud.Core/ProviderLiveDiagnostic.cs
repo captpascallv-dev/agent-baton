@@ -40,6 +40,7 @@ public static class ProviderLiveDiagnostic
         var grok = new GrokQuotaAdapter(http, grokTokens);
         var grokBot = new GrokBotQuotaAdapter(http, cursorTokens);
         var claude = new ClaudeQuotaAdapter(http, DefaultTokenSources.Claude());
+        var antigravity = new AntigravityQuotaAdapter();
         var defaults = ProviderAccessSettings.Default();
         var enabled = new ProviderAccessSettings(defaults.Slots.Select(slot => slot with { Enabled = true }).ToArray(),
             CompactLayoutModes.Rail, true);
@@ -58,11 +59,13 @@ public static class ProviderLiveDiagnostic
             }
             cancellationToken.ThrowIfCancellationRequested();
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(slot.SlotId == ProviderSlotIds.Grok
-                ? TimeSpan.FromSeconds(40)
-                : slot.SlotId == ProviderSlotIds.CodexSecondary
-                    ? TimeSpan.FromSeconds(28)
-                    : TimeSpan.FromSeconds(10));
+            timeout.CancelAfter(slot.SlotId switch
+            {
+                ProviderSlotIds.Grok => TimeSpan.FromSeconds(40),
+                ProviderSlotIds.Antigravity => TimeSpan.FromSeconds(32),
+                ProviderSlotIds.CodexSecondary => TimeSpan.FromSeconds(28),
+                _ => TimeSpan.FromSeconds(10),
+            });
             ProviderSlotSnapshot snapshot;
             string? dependency = null;
             try
@@ -81,6 +84,8 @@ public static class ProviderLiveDiagnostic
                         await grokBot.ReadAsync(slot, timeout.Token).ConfigureAwait(false),
                     ProviderSlotIds.Claude =>
                         await claude.ReadAsync(slot, timeout.Token).ConfigureAwait(false),
+                    ProviderSlotIds.Antigravity =>
+                        await antigravity.ReadAsync(slot, timeout.Token).ConfigureAwait(false),
                     _ => ProviderQuotaPresentation.Placeholder(slot, false, QuotaSlotStatus.Unavailable,
                         "未知槽", "slot_unknown", "slot_unknown"),
                 };

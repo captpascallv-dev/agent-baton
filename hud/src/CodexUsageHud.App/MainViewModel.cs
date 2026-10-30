@@ -565,6 +565,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return SharedWeeklyQuota.SharedSeatNote;
         if (slot.SlotId == ProviderSlotIds.Grok)
             return SharedWeeklyQuota.GrokSeatNote;
+        if (slot.SlotId == ProviderSlotIds.Antigravity && slot.Windows.Count > 0)
+            return AntigravityQuota.ShareNote;
         return "";
     }
 

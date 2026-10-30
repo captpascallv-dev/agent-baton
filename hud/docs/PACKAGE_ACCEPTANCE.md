@@ -2,6 +2,8 @@
 
 Build: `1.1.3` — opt-in local quota snapshot, default off. The accepted v1.1.2 behavior remains: optional Claude subscription quota, an explicit secondary Codex CLI home, and no-focus edge reveal. The five original slots remain; Claude is a sixth slot and defaults off.
 
+Unpublished local candidate `1.1.4` adds an optional Antigravity subscription slot, default off. It is shown on the HUD rail and in settings, and it is not exported by the schema 1 snapshot. The six snapshot slots, their order, and their fields stay as accepted for 1.1.3. This candidate is not a public release.
+
 This summary describes the published interface and its validation scope. It
 contains no real local usage, session identifiers, credentials or machine paths.
 

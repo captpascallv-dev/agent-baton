@@ -32,6 +32,7 @@ internal static class QuotaSnapshotTests
             try
             {
                 SchemaPrivacyAndStates(root, log);
+                ExtraHudSlotIsNotExported(root, log);
                 TogglePendingAtomicAndFailure(root, log);
                 EngineSettingRoundTrip(root, log);
                 AssemblyVersion(log);
@@ -340,9 +341,9 @@ internal static class QuotaSnapshotTests
     private static void AssemblyVersion(StringBuilder log)
     {
         var version = typeof(MainWindow).Assembly.GetName().Version;
-        Expect(version is not null && version.Major == 1 && version.Minor == 1 && version.Build == 3, "assembly");
-        Expect(HudReleaseVersion.FromAssembly(typeof(MainWindow).Assembly) == "1.1.3", "product-text");
-        log.AppendLine("assembly_version=1.1.3");
+        Expect(version is not null && version.Major == 1 && version.Minor == 1 && version.Build == 4, "assembly");
+        Expect(HudReleaseVersion.FromAssembly(typeof(MainWindow).Assembly) == "1.1.4", "product-text");
+        log.AppendLine("assembly_version=1.1.4");
     }
 
     private static void RenderSettings(string root, string output, StringBuilder log)
@@ -548,6 +549,52 @@ internal static class QuotaSnapshotTests
                            name.EndsWith(".tmp", StringComparison.Ordinal))
             .Select(name => name!)
             .ToArray();
+
+    private static void ExtraHudSlotIsNotExported(string root, StringBuilder log)
+    {
+        var observed = DateTimeOffset.Parse("2026-10-31T02:00:00Z", CultureInfo.InvariantCulture);
+        var board = new ProviderQuotaBoard(new[]
+        {
+            Slot(ProviderSlotIds.CodexPrimary, ProviderIds.Codex, QuotaSlotStatus.Live, observed, new[]
+            {
+                Window("primary", 20, 300, observed.AddHours(4)),
+            }),
+            Slot(ProviderSlotIds.CodexSecondary, ProviderIds.Codex, QuotaSlotStatus.Disabled, observed,
+                Array.Empty<QuotaWindowObservation>(), false),
+            Slot(ProviderSlotIds.Cursor, ProviderIds.Cursor, QuotaSlotStatus.Disabled, observed,
+                Array.Empty<QuotaWindowObservation>(), false),
+            Slot(ProviderSlotIds.Grok, ProviderIds.Grok, QuotaSlotStatus.Disabled, observed,
+                Array.Empty<QuotaWindowObservation>(), false),
+            Slot(ProviderSlotIds.GrokBot, ProviderIds.GrokBot, QuotaSlotStatus.Disabled, observed,
+                Array.Empty<QuotaWindowObservation>(), false),
+            Slot(ProviderSlotIds.Claude, ProviderIds.Claude, QuotaSlotStatus.Disabled, observed,
+                Array.Empty<QuotaWindowObservation>(), false),
+            Slot(ProviderSlotIds.Antigravity, ProviderIds.Antigravity, QuotaSlotStatus.Live, observed, new[]
+            {
+                Window("gemini-weekly", 2.14, 10080, observed.AddDays(6)),
+            }),
+        }, observed);
+        var mapped = QuotaSnapshotMapper.MapSlots(board);
+        Expect(mapped.Count == 6, "extra-slot-count");
+        Expect(mapped.All(slot => !string.Equals(slot.Slot, "antigravity", StringComparison.Ordinal)), "extra-slot-id");
+        var directory = Path.Combine(root, "extra-slot");
+        var writer = new QuotaSnapshotWriter(directory, "1.1.4", clock: () => observed);
+        writer.SetEnabled(true);
+        writer.Publish(board);
+        writer.WhenIdleAsync().GetAwaiter().GetResult();
+        var json = File.ReadAllText(writer.FinalPath, Encoding.UTF8);
+        using var document = JsonDocument.Parse(json);
+        Expect(document.RootElement.GetProperty("schema").GetInt32() == 1, "extra-schema");
+        var slots = document.RootElement.GetProperty("slots").EnumerateArray().ToArray();
+        Expect(slots.Length == 6, "extra-json-six");
+        Expect(slots[0].GetProperty("slot").GetString() == "codex_primary", "extra-order");
+        Expect(slots[5].GetProperty("slot").GetString() == "claude", "extra-last");
+        Expect(slots[0].GetProperty("windows")[0].GetProperty("pool").GetString() == "codex_primary_window", "extra-codex");
+        Expect(!json.Contains("antigravity", StringComparison.OrdinalIgnoreCase), "extra-name");
+        Expect(!json.Contains("gemini-weekly", StringComparison.Ordinal), "extra-window");
+        Expect(!json.Contains(Secret, StringComparison.Ordinal), "extra-secret");
+        log.AppendLine("extra_hud_slot_not_exported=pass");
+    }
 
     private static ProviderQuotaBoard OneBoard(int usedPercent) => new(new[]
     {

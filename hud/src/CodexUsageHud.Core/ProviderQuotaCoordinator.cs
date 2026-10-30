@@ -73,6 +73,8 @@ public sealed class ProviderQuotaCoordinator
     public static readonly TimeSpan LiveFreshness = TimeSpan.FromSeconds(75);
     public static readonly TimeSpan ClaudeLiveFreshness = TimeSpan.FromMinutes(6);
     public static readonly TimeSpan ClaudeSuccessInterval = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan AntigravityLiveFreshness = TimeSpan.FromMinutes(6);
+    public static readonly TimeSpan AntigravitySuccessInterval = TimeSpan.FromMinutes(5);
 
     private readonly CodexQuotaProfile _codex;
     private readonly PiCodexQuotaAdapter _piCodex;
@@ -80,6 +82,7 @@ public sealed class ProviderQuotaCoordinator
     private readonly GrokQuotaAdapter _grok;
     private readonly GrokBotQuotaAdapter _grokBot;
     private readonly ClaudeQuotaAdapter _claude;
+    private readonly AntigravityQuotaAdapter _antigravity;
     private readonly IPiCodexTokenSource _piTokens;
     private readonly IsolatedQuotaCache _cache = new();
     private readonly ConcurrentDictionary<string, ProviderRefreshBackoff> _backoff = new(StringComparer.Ordinal);
@@ -97,7 +100,8 @@ public sealed class ProviderQuotaCoordinator
         IAllowlistedHttpSender? http = null, ICursorTokenSource? cursorTokens = null,
         IGrokTokenSource? grokTokens = null, PiCodexQuotaAdapter? piCodex = null,
         IPiCodexTokenSource? piTokens = null, ClaudeQuotaAdapter? claude = null,
-        IClaudeTokenSource? claudeTokens = null, Func<DateTimeOffset>? clock = null)
+        IClaudeTokenSource? claudeTokens = null, Func<DateTimeOffset>? clock = null,
+        AntigravityQuotaAdapter? antigravity = null)
     {
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         http ??= new AllowlistedHttpsSender(TimeSpan.FromSeconds(8));
@@ -110,7 +114,10 @@ public sealed class ProviderQuotaCoordinator
         _grok = grok ?? new GrokQuotaAdapter(http, grokTokens);
         _grokBot = grokBot ?? new GrokBotQuotaAdapter(http, cursorTokens);
         _claude = claude ?? new ClaudeQuotaAdapter(http, claudeTokens ?? DefaultTokenSources.Claude(), _clock);
+        _antigravity = antigravity ?? new AntigravityQuotaAdapter(clock: _clock);
     }
+
+    public Func<string, TimeSpan>? ReadTimeoutOverride { get; set; }
 
     public IsolatedQuotaCache Cache => _cache;
     public TimeSpan PublishBudget { get; set; } = TimeSpan.FromMilliseconds(500);
@@ -237,7 +244,7 @@ public sealed class ProviderQuotaCoordinator
             }
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(SlotReadTimeout(slot.SlotId));
+            timeout.CancelAfter(TimeoutFor(slot.SlotId));
             ProviderSlotSnapshot snapshot;
             try
             {
@@ -261,14 +268,10 @@ public sealed class ProviderQuotaCoordinator
                     QuotaSlotStatus.Disabled or QuotaSlotStatus.SetupRequired or QuotaSlotStatus.NotConnected
                     or QuotaSlotStatus.NoAllowance)
                 {
-                    var interval = slot.SlotId == ProviderSlotIds.Claude &&
-                        snapshot.Status is QuotaSlotStatus.Live or QuotaSlotStatus.Stale
-                        ? ClaudeSuccessInterval
-                        : ProviderRefreshBackoff.DefaultSuccessInterval;
+                    var interval = SuccessInterval(slot.SlotId, snapshot);
                     backoff.Succeeded(sampledAt, interval);
                 }
-                else if (slot.SlotId == ProviderSlotIds.Claude &&
-                         string.Equals(snapshot.ErrorCode, "claude_rate_limited", StringComparison.Ordinal))
+                else if (IsRateLimited(slot.SlotId, snapshot))
                 {
                     backoff.FailedRateLimited(sampledAt);
                 }
@@ -376,6 +379,8 @@ public sealed class ProviderQuotaCoordinator
                 return await _grokBot.ReadAsync(slot, cancellationToken).ConfigureAwait(false);
             case ProviderSlotIds.Claude:
                 return await _claude.ReadAsync(slot, cancellationToken).ConfigureAwait(false);
+            case ProviderSlotIds.Antigravity:
+                return await _antigravity.ReadAsync(slot, cancellationToken).ConfigureAwait(false);
             default:
                 return ProviderQuotaPresentation.Placeholder(slot, false, QuotaSlotStatus.Unavailable,
                     "未知槽", "slot_unknown", "slot_unknown");
@@ -439,7 +444,12 @@ public sealed class ProviderQuotaCoordinator
         }
         else if (snapshot.Status == QuotaSlotStatus.Live)
         {
-            var freshness = snapshot.SlotId == ProviderSlotIds.Claude ? ClaudeLiveFreshness : LiveFreshness;
+            var freshness = snapshot.SlotId switch
+            {
+                ProviderSlotIds.Claude => ClaudeLiveFreshness,
+                ProviderSlotIds.Antigravity => AntigravityLiveFreshness,
+                _ => LiveFreshness,
+            };
             if (snapshot.Windows.Count > 0 && !hasCurrent)
             {
                 status = QuotaSlotStatus.Stale;
@@ -506,6 +516,8 @@ public sealed class ProviderQuotaCoordinator
     {
         if (slotId == ProviderSlotIds.Claude)
             snapshot = ResolveClaudePublication(snapshot);
+        else if (slotId == ProviderSlotIds.Antigravity)
+            snapshot = ResolveAntigravityPublication(snapshot);
         _snapshots[slotId] = snapshot;
         SlotPublished?.Invoke(snapshot);
     }
@@ -573,11 +585,72 @@ public sealed class ProviderQuotaCoordinator
     {
         if (string.Equals(slotId, ProviderSlotIds.Grok, StringComparison.Ordinal))
             return TimeSpan.FromSeconds(35);
+        if (string.Equals(slotId, ProviderSlotIds.Antigravity, StringComparison.Ordinal))
+            return TimeSpan.FromSeconds(28);
         if (string.Equals(slotId, ProviderSlotIds.CodexSecondary, StringComparison.Ordinal))
             return TimeSpan.FromSeconds(24);
         if (slotId.StartsWith("codex", StringComparison.Ordinal))
             return TimeSpan.FromSeconds(12);
         return TimeSpan.FromSeconds(8);
+    }
+
+    private TimeSpan TimeoutFor(string slotId) =>
+        ReadTimeoutOverride?.Invoke(slotId) ?? SlotReadTimeout(slotId);
+
+    private static TimeSpan SuccessInterval(string slotId, ProviderSlotSnapshot snapshot)
+    {
+        if (snapshot.Status is not (QuotaSlotStatus.Live or QuotaSlotStatus.Stale))
+            return ProviderRefreshBackoff.DefaultSuccessInterval;
+        if (slotId == ProviderSlotIds.Claude) return ClaudeSuccessInterval;
+        if (slotId == ProviderSlotIds.Antigravity) return AntigravitySuccessInterval;
+        return ProviderRefreshBackoff.DefaultSuccessInterval;
+    }
+
+    private static bool IsRateLimited(string slotId, ProviderSlotSnapshot snapshot)
+    {
+        if (slotId == ProviderSlotIds.Claude &&
+            string.Equals(snapshot.ErrorCode, "claude_rate_limited", StringComparison.Ordinal))
+            return true;
+        return slotId == ProviderSlotIds.Antigravity &&
+               string.Equals(snapshot.ErrorCode, "antigravity_rate_limited", StringComparison.Ordinal);
+    }
+
+    private ProviderSlotSnapshot ResolveAntigravityPublication(ProviderSlotSnapshot incoming)
+    {
+        if (!IsAntigravityTransient(incoming))
+            return incoming with { UpdateDelayed = false, DelayText = null };
+
+        if (!_snapshots.TryGetValue(ProviderSlotIds.Antigravity, out var previous) ||
+            !CanRetainAntigravity(previous, incoming))
+        {
+            return incoming with { UpdateDelayed = false, DelayText = null };
+        }
+
+        return previous with
+        {
+            Label = incoming.Label,
+            Enabled = true,
+            Status = QuotaSlotStatus.Stale,
+            StatusText = "更新延迟",
+            ErrorCode = incoming.ErrorCode,
+            UpdateDelayed = true,
+            DelayText = null,
+        };
+    }
+
+    private static bool CanRetainAntigravity(ProviderSlotSnapshot previous, ProviderSlotSnapshot incoming)
+    {
+        if (!previous.Enabled || previous.Windows.Count == 0) return false;
+        if (previous.Status is not (QuotaSlotStatus.Live or QuotaSlotStatus.Stale)) return false;
+        return string.Equals(previous.ConfigFingerprint, incoming.ConfigFingerprint, StringComparison.Ordinal);
+    }
+
+    private static bool IsAntigravityTransient(ProviderSlotSnapshot snapshot)
+    {
+        if (snapshot.SlotId != ProviderSlotIds.Antigravity || snapshot.Status != QuotaSlotStatus.Unavailable)
+            return false;
+        return snapshot.ErrorCode is "antigravity_rate_limited" or "antigravity_timeout" or
+            "antigravity_cli_failed" or "slot_timeout" or "slot_failed";
     }
 
     private static QuotaObservation ObservationFrom(ProviderSlotSnapshot snapshot)

@@ -41,6 +41,12 @@ Pascal 2026-10-04 adds an opt-in local quota snapshot file. It is off by default
 writes only the allowlisted numbers already on the HUD board, and does not add
 a provider, a timer, or any upload.
 
+Pascal 2026-10-31 adds one optional Antigravity subscription slot beside the
+six. It is quota-only, default off, and reads the official CLI command
+`agy --print /usage`. Model groups stay separate: a weekly window and a
+five-hour window in the same group are not added, and G1 credits are not turned
+into a subscription percent. The schema 1 snapshot does not export this slot.
+
 ## 3. Solution shape
 
 Create this structure unless a small naming adjustment is needed by tooling:
@@ -551,10 +557,11 @@ Collapsed form shows one line equivalent to:
 
 The compact visual uses an opaque light card, deep-green normal state,
 readable Chinese typography and a horizontal remaining-quota bar. The default
-collapsed rail is 252 logical pixels wide, with six labelled slots. Its height
+collapsed rail is 252 logical pixels wide, with seven labelled slots. Its height
 follows the measured slot list and scrolls when the work area is shorter. The
-top rail is one row of those six slots, up to 1100 logical pixels wide. Claude
-is labelled distinctly and does not feed Codex session analysis. The previous
+top rail is one row of those seven slots, up to 1100 logical pixels wide. Claude
+and Antigravity are labelled distinctly and do not feed Codex session analysis.
+Antigravity stays out of the six-slot snapshot. The previous
 compact card (224 by 324; top 660 by 80) remains a settings option. Both retain
 quota, reset, settings, window-topmost, tray and expand controls. Iconography
 uses original letter marks and Windows system assets, not copied third-party icons.
@@ -611,8 +618,10 @@ change refresh, tray, docking, or provider reads.
 
 Schema is `1`. UTF-8 JSON, no BOM. Root fields are `schema`, `written_at_utc`,
 `hud_version`, and `slots`. `hud_version` is the App assembly version
-`major.minor.build` (candidate `1.1.3`). `written_at_utc` is the replace time.
-`slots` always has these six entries, in this order:
+`major.minor.build` (local candidate `1.1.4`; the published package remains
+`1.1.3`). `written_at_utc` is the replace time.
+`slots` always has these six entries, in this order. The Antigravity HUD slot
+is not one of them:
 
 | `slot` | `label` |
 | --- | --- |

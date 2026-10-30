@@ -756,6 +756,7 @@ public partial class MainWindow : Window, IDisposable
         ApplySlotEditor(stored.Slot(ProviderSlotIds.Grok), SlotGrokEnabled, SlotGrokLabel);
         ApplySlotEditor(stored.Slot(ProviderSlotIds.GrokBot), SlotGrokBotEnabled, SlotGrokBotLabel);
         ApplySlotEditor(stored.Slot(ProviderSlotIds.Claude), SlotClaudeEnabled, SlotClaudeLabel);
+        ApplySlotEditor(stored.Slot(ProviderSlotIds.Antigravity), SlotAntigravityEnabled, SlotAntigravityLabel);
         SettingsStatusText.Text = string.Empty;
         if (IsolatedPreviewLaunch.CurrentProcessIsolated)
         {
@@ -807,6 +808,8 @@ public partial class MainWindow : Window, IDisposable
                 SlotGrokBotEnabled.IsChecked == true),
             new ProviderSlotSettings(ProviderSlotIds.Claude, TextOrDefault(SlotClaudeLabel, "Claude 订阅"),
                 SlotClaudeEnabled.IsChecked == true),
+            new ProviderSlotSettings(ProviderSlotIds.Antigravity, TextOrDefault(SlotAntigravityLabel, "Antigravity"),
+                SlotAntigravityEnabled.IsChecked == true),
         }, _compactLayout, true);
     }
 
@@ -1501,6 +1504,8 @@ public partial class MainWindow : Window, IDisposable
                 ProviderSettingKeys.Enabled(ProviderSlotIds.GrokBot),
                 ProviderSettingKeys.Label(ProviderSlotIds.Claude),
                 ProviderSettingKeys.Enabled(ProviderSlotIds.Claude),
+                ProviderSettingKeys.Label(ProviderSlotIds.Antigravity),
+                ProviderSettingKeys.Enabled(ProviderSlotIds.Antigravity),
                 QuotaSnapshotWriter.SettingKey);
         }
         catch (Exception)

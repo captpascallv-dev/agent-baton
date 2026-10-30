@@ -28,8 +28,14 @@ Codex Usage HUD 是一个非官方的 Windows 10/11 x64 本地伴侣应用。它
 Windows 可能因为应用尚未购买代码签名证书而显示 SmartScreen 提示。Release 同时提供
 SHA-256 校验文件，用于确认下载内容没有发生变化。
 
-本仓库准备的公开版本是 1.1.3。下载 GitHub Releases 里的
+本仓库已公开的版本是 1.1.3。下载 GitHub Releases 里的
 `CodexUsageHUD-win-x64.zip`，并用同页提供的 SHA-256 文件核对。
+
+### v1.1.4 本机候选（未发布）
+
+这一版只在本机候选里增加可选的 Antigravity 订阅额度槽，默认关闭。勾选后，HUD 调用本机已经登录的官方 `agy -p /usage --output-format json`。这条命令由 CLI 自己回答，不向模型发推理。界面按返回的模型组分开显示每周和 5 小时窗口：同一组里的模型共用该组额度，不同组和不同窗口都不能相加，G1 付费 credits 也不换成订阅百分比。服务没有给出重置时间时，不补周期。大约每 5 分钟读一次，读的时候不抢焦点，也不把原始输出落盘。
+
+`quota-snapshot.json` 仍是 schema 1 的原来六个槽，顺序和字段不变，不导出 Antigravity。公开下载仍是 1.1.3，这一版没有发布。
 
 已安装便携版时：先从托盘菜单选择“退出”，再解压新的 ZIP 并替换原来的程序文件，然后重新打开。
 已有的 `%LOCALAPPDATA%\CodexUsageHUD` 数据和设置不会被这次替换删除。ZIP 里没有安装程序，
@@ -158,7 +164,9 @@ Codex App Server 现会同时返回名为 `primary` 与 `secondary` 的额度窗
 
 - 完全本地运行，不上传遥测，不做云同步。
 - Codex 额度仍只通过本机 App Server 只读方法 `account/rateLimits/read` 读取。
-- 六个额度槽（两个 Codex、Cursor、Grok、Grok Bot、Claude 订阅）。当前 Codex 走本机 App Server。
+- 七个额度槽（两个 Codex、Cursor、Grok、Grok Bot、Claude 订阅、Antigravity 订阅）。当前 Codex 走本机 App Server。
+  Antigravity 默认关闭，只读官方 `agy --print /usage` 的订阅模型额度；各组窗口分开显示，不相加，不含 G1 credits。
+  额度快照仍只写原来六个槽。
   第二 Codex 默认仍读取本机 PI 已登录的 ChatGPT/Codex 订阅（openai-codex）。设置里可以另填一个
   Codex CLI 主目录；留空继续用 PI，填写后只对该目录读取 CLI 额度，失败时不改回 PI，也不复制登录。
   Cursor、Grok、Grok Bot 和 Claude 需在设置中勾选后，运行时才读取
@@ -206,7 +214,12 @@ treating the file timestamp as a logout. Prompts, responses, and credential
 values are never collected, logged, or shown.
 Download the ready-to-run Windows package from
 [Releases](https://github.com/captpascallv-dev/codex-usage-hud/releases/latest), or build
-the source with the project-local scripts below. This source package is v1.1.3.
+the source with the project-local scripts below. The published package is v1.1.3.
+This tree also carries an unpublished v1.1.4 candidate: an optional, default-off
+Antigravity subscription slot. It reads `agy --print /usage` and shows each model
+group's own windows. Those windows are not added together, and G1 credits are not
+converted into a subscription percent. The schema 1 snapshot still exports the
+original six slots only.
 v1.1.3 adds an opt-in, default-off local quota snapshot at
 `%LOCALAPPDATA%\CodexUsageHUD\quota-snapshot.json`. While the setting is on, each
 quota publication atomically replaces that one file with the six fixed slots and their

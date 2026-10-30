@@ -74,6 +74,8 @@ internal static class Program
             return RunSecondaryCliCapture(args.Skip(1).ToArray());
         if (args.Length > 0 && args[0].Equals("--quota-snapshot", StringComparison.Ordinal))
             return QuotaSnapshotTests.Run(args.Skip(1).ToArray());
+        if (args.Length > 0 && args[0].Equals("--antigravity-quota", StringComparison.Ordinal))
+            return AntigravityQuotaChecks.Run(args.Skip(1).ToArray());
 
         var runRoot = NewRunRoot("test-run");
         var tests = new (string Name, Action Run)[]
@@ -5828,7 +5830,7 @@ internal static class Program
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(70));
         var result = ProviderLiveDiagnostic.RunAsync(timeout.Token).GetAwaiter().GetResult();
-        Assert.Equal(6, result.Slots.Count);
+        Assert.Equal(7, result.Slots.Count);
         foreach (var slotId in ProviderSlotIds.All)
             Assert.True(result.Slots.Any(slot => slot.SlotId == slotId));
         Assert.Equal(0, ProviderLiveDiagnostic.SecretHits(result.Output).Count);
@@ -5976,10 +5978,11 @@ internal static class Program
         Assert.True(!cliSecondary.SuppliesLocalAnalysis);
         Assert.True(cliBoard.PrimaryCodex!.SuppliesLocalAnalysis);
         Assert.True(!coordinator.Cache.SharesReference(ProviderSlotIds.CodexPrimary, ProviderSlotIds.CodexSecondary));
-        Assert.Equal(6, cliBoard.Slots.Count);
+        Assert.Equal(7, cliBoard.Slots.Count);
         foreach (var slotId in new[]
                  {
                      ProviderSlotIds.Cursor, ProviderSlotIds.Grok, ProviderSlotIds.GrokBot, ProviderSlotIds.Claude,
+                     ProviderSlotIds.Antigravity,
                  })
         {
             Assert.Equal(QuotaSlotStatus.Disabled, cliBoard.Find(slotId)!.Status);
@@ -6607,8 +6610,9 @@ internal static class Program
         Assert.True(!xaml.Contains("最近统计·raw", StringComparison.Ordinal));
         foreach (var required in new[]
                  {
-                     "RailVerticalShell", "RailTopShell", "SlotDetailPopup", "六个额度槽",
+                     "RailVerticalShell", "RailTopShell", "SlotDetailPopup", "七个额度槽",
                      "启用 Claude 订阅额度", "SlotClaudeEnabled",
+                     "启用 Antigravity 订阅额度", "SlotAntigravityEnabled",
                      "OnRailSlotClick", "PiCodexPresenceText", "CompactLayoutComboBox",
                  })
             Assert.True((xaml + window).Contains(required, StringComparison.Ordinal));
@@ -13020,8 +13024,9 @@ internal static class Program
         Assert.True(!authoritativeZero[0].ResetsAtUtc.HasValue, "missing_reset_invented");
 
         var defaults = ProviderAccessSettings.Default();
-        Assert.Equal(6, defaults.Slots.Count);
+        Assert.Equal(7, defaults.Slots.Count);
         Assert.True(!defaults.Slot(ProviderSlotIds.Claude).Enabled, "claude_default_enabled");
+        Assert.True(!defaults.Slot(ProviderSlotIds.Antigravity).Enabled, "antigravity_default_enabled");
         var preserved = ProviderSettingKeys.FromStored(new Dictionary<string, string?>
         {
             ["slot_cursor_enabled"] = "1",
