@@ -25,7 +25,7 @@ from .projectbody import (SUMMARY_SECTIONS, _apply_summary_sections, _clean_summ
 from .redact import documents, safe_text
 from .skills import SkillMixin
 from .sites import SiteMixin
-from .todos import TodoMixin
+from .todos import TodoMixin, notice
 from .workspace import TokenMixin
 from .store import (LEVEL_NAMES, LEVELS, BaseError, Doc, Forbidden, NotFound, StorageError, Store, Viewer, clean_project_paths,
                     make_viewer, member_cards, member_keys, now_taipei, owner_name_at, project_path_list)
@@ -184,6 +184,9 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
         out = [tr("agent.083", v0=config.display_name()), "", self._identity_line(viewer), ""]
         if self._shared_line(viewer):
             out[-1:-1] = [self._shared_line(viewer)]
+        unnotified = sum(notice(d.meta) == "unnotified" for d in self._todos(visible))
+        if unnotified:
+            out += [tr("ask.company", count=unnotified, owner=self.owner_name), ""]
         company = self._find(visible, "handbook", "company")
         if company:
             out += [_strip_title(company.body), ""]

@@ -177,7 +177,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--note", required=True, help=tr("agent.203"))
 
     s = sub.add_parser("todos", parents=[common], help=tr("agent.204"))
-    s.add_argument("--scope", default="open", choices=["open", "today", "week", "all"])
+    s.add_argument("--scope", default="open", choices=["open", "today", "week", "all", "asks"])
     s.add_argument("--project")
     s = sub.add_parser("todo-add", parents=[common], help=tr("agent.205"))
     s.add_argument("--title")
@@ -187,11 +187,20 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--notes")
     s.add_argument("--items", help=tr("agent.208"))
     s.add_argument("--note", help=tr("agent.209"))
+    s.add_argument("--ask", choices=["approve", "act", "fyi"], help=tr("ask.cli_kind"))
+    for field in ("context", "why", "if_skipped", "action"):
+        s.add_argument("--" + field.replace("_", "-"), help=tr("ask.cli_" + field))
     s = sub.add_parser("todo-update", parents=[common], help=tr("agent.210"))
     s.add_argument("todo_id")
     for name in ("title", "due", "time", "project", "notes"):
         s.add_argument(f"--{name}")
     s.add_argument("--status", choices=["open", "done", "dropped"])
+    s.add_argument("--ask", choices=["approve", "act", "fyi"], help=tr("ask.cli_kind"))
+    for field in ("context", "why", "if_skipped", "action"):
+        s.add_argument("--" + field.replace("_", "-"), help=tr("ask.cli_" + field))
+    notice = s.add_mutually_exclusive_group()
+    notice.add_argument("--notified", dest="notified", action="store_true", default=None, help=tr("ask.cli_notified"))
+    notice.add_argument("--not-notified", dest="notified", action="store_false", help=tr("ask.cli_not_notified"))
 
     s = sub.add_parser("apps", parents=[common], help=tr("agent.211"))
     s.add_argument("--kind")
@@ -326,12 +335,12 @@ def _json(text: str, flag: str):
 def _todo_items(args) -> list:
     if args.items:
         return _json(args.items, "--items")
-    item = {k: getattr(args, k) for k in ("title", "due", "time", "project", "notes") if getattr(args, k) is not None}
+    item = {k: getattr(args, k) for k in ("title", "due", "time", "project", "notes", "ask", "context", "why", "if_skipped", "action") if getattr(args, k) is not None}
     return [item]
 
 
 def _todo_changes(args) -> dict:
-    return {k: getattr(args, k) for k in ("title", "due", "time", "project", "notes", "status")
+    return {k: getattr(args, k) for k in ("title", "due", "time", "project", "notes", "status", "ask", "context", "why", "if_skipped", "action", "notified")
             if getattr(args, k) is not None}
 
 

@@ -85,6 +85,10 @@ def todo(d: Doc, viewer: Viewer, docs, today, by_id) -> dict:
                        "done_at": str(m.get("done_at") or "") or None,
                        "repeat": m.get("repeat") if m.get("repeat") in todos.REPEATS else None,
                        "created_by": author(m.get("created_by"), viewer, docs)})
+    if m.get("ask"):
+        row.update(text_fields({key: m.get(key) for key in ("ask", *todos.ASK_FIELDS, "notified_at")}))
+        row["notice"] = todos.notice(m)
+        row["notified_by"] = author(m.get("notified_by"), viewer, docs) if m.get("notified_by") else None
     row["notes_html"] = html(notes)
     row["allowed_actions"] = {"edit": True}
     return row

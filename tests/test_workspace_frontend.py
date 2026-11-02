@@ -67,6 +67,47 @@ context.findButton = (node, text) => node.querySelectorAll('button').find(x => x
 '''
 
 CASES = {
+    "登记置顶与知晓按钮双语": r'''
+payloads = LOCAL; await loadMe();
+const today = payloads['/api/todos'].today;
+const plain = {id:'plain', title:'Ordinary task', status:'open', due:today, time:null, bucket:'today', project:null, notes:'', created:today, created_by:'Agent', repeat:null, allowed_actions:{edit:true}};
+const request = { ...plain, id:'request', title:'Please sign in again', ask:'act', notice:'unnotified', context:'Session expired while preparing an order. <img onerror=x>', why:'Only you can scan the code.', if_skipped:'The order waits.', action:'Open the supplier portal and sign in.', notified_by:null, notified_at:null };
+const old = { ...request, id:'older', title:'Already relayed', notice:'notified', notified_by:'Agent', notified_at:'2026-10-10 23:30', created:'2026-10-09' };
+const closed = { ...request, id:'closed', title:'Resolved request', status:'done', notice:'closed' };
+const long = { ...request, id:'long', title:'Long explanation', created:'2099-01-01', context:'Long context. '.repeat(60) };
+payloads['/api/todos'].items = [plain, old, long, closed, request];
+const normalText = todoRow(plain, today, () => {}).textContent;
+location.hash = '#/todos'; await renderTodos();
+const page = document.getElementById('page');
+assert.equal(page.querySelector('.todo-group').textContent, '要你处理3');
+assert.equal(page.querySelectorAll('.todo-row .todo-title').map(n => n.textContent).join('|'), 'Please sign in again|Long explanation|Already relayed|Ordinary task');
+for (const text of ['要你动手', '登记：Agent', '未通知', '已通知：Agent，2026-10-10 23:30', '怎么来的', '为什么要你', '不做会怎样', '要你做']) assert.ok(page.textContent.includes(text), text);
+const details = page.querySelectorAll('.ask-details');
+assert.equal(details[0].getAttribute('open'), '');
+assert.equal(details[1].getAttribute('open'), null);
+assert.equal(page.querySelector('img'), null);
+assert.equal(page.querySelectorAll('.todo-row').at(-1).textContent, normalText);
+assert.ok(!page.textContent.includes('Resolved request'));
+await selectLanguage('en');
+for (const text of ['For your attention', 'Your action', 'Registered: Agent', 'Unnotified', 'How this arose', 'Why you are needed', 'If skipped', 'What you should do', 'Got it']) assert.ok(page.textContent.includes(text), text);
+const previousFetch = fetch;
+fetch = async (path, opt) => {
+  if (path === '/api/todos/request' && opt?.method === 'POST') {
+    calls.push([path,opt]);
+    Object.assign(request, {notice:'notified', notified_by:DATA_VALUE.self, notified_at:'2026-10-11 00:01'});
+    return response({ok:true});
+  }
+  return previousFetch(path,opt);
+};
+await findButton(page, 'Got it').fire('click');
+const write = calls.find(([path]) => path === '/api/todos/request');
+assert.deepEqual(JSON.parse(write[1].body), {notified:true});
+await renderTodos();
+assert.ok(page.textContent.includes('Notified: You, 2026-10-11 00:01'));
+assert.equal(request.status, 'open');
+await selectLanguage('zh');
+assert.ok(page.textContent.includes('已通知：你，2026-10-11 00:01'));
+''',
     "撤下技能的显示开关与计数": r'''
 payloads = LOCAL; await loadMe();
 const listed = { id: 'example', name: 'Available skill', description: '', installs: {}, alert: null, listed: true, in_shared: false };

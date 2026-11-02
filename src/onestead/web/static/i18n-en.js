@@ -797,5 +797,19 @@ const I18N_EN = {
   "file.draft": "Home draft",
   "token.http": "MCP (HTTP): {0}\nAuthorization: Bearer {1}",
   "here.local_dirs": "Local directories",
-  "here.local_dirs_hint": "One absolute path per line"
+  "here.local_dirs_hint": "One absolute path per line",
+  "ask.group": "For your attention",
+  "ask.approve": "Your approval",
+  "ask.act": "Your action",
+  "ask.fyi": "For you to know",
+  "ask.registered": "Registered: {0}",
+  "ask.unnotified": "Unnotified",
+  "ask.notified": "Notified: {0}, {1}",
+  "ask.context": "How this arose",
+  "ask.why": "Why you are needed",
+  "ask.if_skipped": "If skipped",
+  "ask.action": "What you should do",
+  "ask.acknowledge": "Got it",
+  "ask.details": "Context and next action",
+  "ask.category": "Request category"
 };

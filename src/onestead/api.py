@@ -7,7 +7,7 @@ import sys
 import traceback
 from contextlib import redirect_stdout
 
-from . import config, usage
+from . import config, todos, usage
 from .base import CompanyBase
 from .i18n import text as tr
 from .store import AuthRejected, BaseError, Busy, Conflict, Forbidden, NotFound, StorageError, owner_name, project_path_list
@@ -17,6 +17,9 @@ from .textutil import _as_date
 SKILL_FIELDS = {key: (str, type(None)) for key in (
     "title", "one_line", "maintainer", "upstream", "upstream_version", "home", "project", "notes")}
 SKILL_FIELDS["origin"] = str
+TODO_FIELDS = {key: (str, type(None)) for key in (
+    "due", "time", "repeat", "project", "notes")}
+TODO_FIELDS.update({key: str for key in ("title", "ask", *todos.ASK_FIELDS)})
 FIELDS = {
     "owner": {}, "list_projects": {}, "list_members": {},
     "create_project": {"id": str, "title": str, "goal": str, "state": str, "paths": list, "signed_as": str},
@@ -24,12 +27,17 @@ FIELDS = {
     "list_skills": {"include_unlisted": bool},
     "register_skill": {"id": str, **SKILL_FIELDS, "one_line": str, "signed_as": str},
     "update_skill": {"skill_id": str, "changes": dict, "signed_as": str},
+    "list_todos": {"scope": str, "project_id": (str, type(None))},
+    "add_todo": {**TODO_FIELDS, "signed_as": str},
+    "update_todo": {"todo_id": str, "changes": dict, "signed_as": str},
 }
 REQUIRED = {
     "create_project": {"id", "title", "goal", "signed_as"},
     "append_status": {"project_id", "text", "signed_as"},
     "register_skill": {"id", "one_line", "signed_as"},
     "update_skill": {"skill_id", "changes", "signed_as"},
+    "add_todo": {"title", "signed_as"},
+    "update_todo": {"todo_id", "changes", "signed_as"},
 }
 
 
@@ -56,6 +64,8 @@ def _request(request) -> tuple[str, dict]:
         raise BaseError(tr("api.type", field="paths"))
     if method == "update_skill":
         _fields(params["changes"], {**SKILL_FIELDS, "listed": bool})
+    if method == "update_todo":
+        _fields(params["changes"], {**TODO_FIELDS, "status": str, "notified": bool})
     return method, params
 
 
@@ -118,6 +128,23 @@ def dispatch(base: CompanyBase, method: str, params: dict):
         return {"id": skill["id"].strip(), "commit": commit}
     if method == "update_skill":
         return {"commit": base._update_skill_commit(**params)}
+    if method == "list_todos":
+        groups = base._todo_groups(visible, **params)
+        return [{"id": d.id, "title": d.title, "status": d.meta.get("status", "open"),
+                 "due": _date(d.meta.get("due")), "time": todos.time_of(d.meta),
+                 "repeat": d.meta.get("repeat"), "project": d.meta.get("project"),
+                 "notes": todos.notes_of(d), "created": _date(d.meta.get("created")),
+                 "created_by": d.meta.get("created_by"), "done_at": _date(d.meta.get("done_at")),
+                 **{key: d.meta.get(key) for key in ("ask", *todos.ASK_FIELDS, "notified_by", "notified_at")},
+                 "notice": todos.notice(d.meta)} for docs in groups.values() for d in docs]
+    if method == "add_todo":
+        item = dict(params)
+        signed_as = item.pop("signed_as")
+        ids, commit = base._add_todos_commit([item], signed_as=signed_as)
+        return {"id": ids[0], "commit": commit}
+    if method == "update_todo":
+        _, commit, _ = base._update_todo_commit(**params)
+        return {"commit": commit}
 
 
 def run(args) -> int:

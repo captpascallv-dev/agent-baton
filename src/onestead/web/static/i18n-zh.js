@@ -797,5 +797,19 @@ const I18N_ZH = {
   "file.draft": "首页草稿",
   "token.http": "MCP（HTTP）：{0}\nAuthorization: Bearer {1}",
   "here.local_dirs": "本机目录",
-  "here.local_dirs_hint": "一行一个绝对路径"
+  "here.local_dirs_hint": "一行一个绝对路径",
+  "ask.group": "要你处理",
+  "ask.approve": "要你批",
+  "ask.act": "要你动手",
+  "ask.fyi": "让你知道",
+  "ask.registered": "登记：{0}",
+  "ask.unnotified": "未通知",
+  "ask.notified": "已通知：{0}，{1}",
+  "ask.context": "怎么来的",
+  "ask.why": "为什么要你",
+  "ask.if_skipped": "不做会怎样",
+  "ask.action": "要你做",
+  "ask.acknowledge": "我知道了",
+  "ask.details": "前因后果与处理动作",
+  "ask.category": "登记分类"
 };

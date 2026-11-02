@@ -199,7 +199,7 @@ def build_server(root: str, agent_key: str | None, *, remote: bool = False, oaut
         """换某个角色的担任者。普通角色直接生效；关键角色先记一条接任申请，带上 主人 的批准再调一次才生效。"""
         return run("handover_role", project_id, role, who, reason, owner_approval, signed_as)
 
-    @mcp.tool(annotations=READ, description=tr("agent.648"))
+    @mcp.tool(annotations=READ, description=tr("agent.648", owner=owner_name))
     def list_todos(
         scope: Annotated[str, Field(description=tr("agent.404"))] = "open",
         project_id: Annotated[str | None, Field(description=tr("agent.405"))] = None,
@@ -207,7 +207,7 @@ def build_server(root: str, agent_key: str | None, *, remote: bool = False, oaut
         """你的待办（agent 是它所属的人的），按逾期、今天、接下来 7 天、以后、没定日期分组。"""
         return run("list_todos", scope, project_id)
 
-    @mcp.tool(annotations=WRITE, description=tr("agent.649"))
+    @mcp.tool(annotations=WRITE, description=tr("agent.649", owner=owner_name))
     def add_todos(
         items: Annotated[list[dict], Field(description=(
             tr("agent.406")))],
@@ -217,7 +217,7 @@ def build_server(root: str, agent_key: str | None, *, remote: bool = False, oaut
         """加你的待办（agent 是它所属的人的；一次可加多条，作为一次提交）。有日期的会出现在网页的日历里。"""
         return run("add_todos", items, note, signed_as)
 
-    @mcp.tool(annotations=WRITE, description=tr("agent.650"))
+    @mcp.tool(annotations=WRITE, description=tr("agent.650", owner=owner_name))
     def update_todo(
         todo_id: Annotated[str, Field(description=tr("agent.408"))],
         changes: Annotated[dict, Field(description=(

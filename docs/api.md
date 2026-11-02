@@ -43,7 +43,7 @@ There are exactly five codes:
 
 | Code | Meaning | Automatic retry |
 | --- | --- | --- |
-| `not_found` | The project or skill does not exist, or the identity cannot see it. These cases intentionally share one message. | No |
+| `not_found` | The project, skill, or todo does not exist, or the identity cannot see it. These cases intentionally share one message. | No |
 | `forbidden` | Missing, unknown, invalid, or archived identity; a reserved owner identity; insufficient write permission; assigned or remote access to a local full-access read; a signature outside a shared identity's `signers`; or authentication rejected before writing. | No |
 | `invalid` | Invalid JSON, envelope, parameters, content, signature format, suspected credentials in a write, duplicate id, or another expected validation failure. | No |
 | `conflict` | A write-lock timeout or a `store.Conflict` concurrency failure. | Yes |
@@ -51,7 +51,7 @@ There are exactly five codes:
 
 Only `conflict` is eligible for automatic retry. There is no request id, idempotency key, or exactly-once guarantee. If a process is interrupted or its response is lost, a caller must resolve that uncertainty before resending an append.
 
-## Methods
+## Methods (11)
 
 All lists are filtered by the identity's `viewer.visible` scope. Project and member lists do not grant access to further content. The owner name uses the visible owner record, with the configured owner key as its fallback. `list_skills` additionally requires a local, valid, full-access identity.
 
@@ -170,6 +170,57 @@ Uses the existing skill registration path and writes an internal note. `listed` 
 `changes` accepts `title`, `one_line`, `origin`, `maintainer`, `upstream`, `upstream_version`, `home`, `project`, and `notes`, with the registration limits. Optional text can be cleared with an empty string or null; `origin` must remain one of its stored values. It also accepts **`listed` as a boolean**: false withdraws the skill, true relists it. The note and installed files are preserved. An absent `listed` field means true, and existing notes are not rewritten to add it.
 
 Returns `{"commit":"abc1234"}` or `{"commit":null}` if the resulting file is identical. Write metadata includes the current date and author, so repeating a value on a later day or under a different author can still produce a commit.
+
+### `list_todos`
+
+| Parameter | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `scope` | string | no | `open` (default), `today`, `week`, `all`, or `asks`. |
+| `project_id` | string or null | no | Filter by linked project id. |
+
+Returns an array of visible personal todos. Date scopes use the same group order as MCP: overdue, today, next 7 days, later, no date, then completed and cancelled for `all`. `today` includes overdue; `week` includes overdue and the next seven days. Within each group the order is due date, time, creation date, id. `asks` includes only open requests: unnotified first, then notified, oldest registration first within each group.
+
+| Result fields | Type | Meaning |
+| --- | --- | --- |
+| `id`, `title`, `status` | string | Todo id, title, and `open` / `done` / `dropped`. |
+| `due`, `created`, `done_at` | date or null | Dates as `YYYY-MM-DD`. |
+| `time`, `repeat`, `project` | string or null | Time, recurrence, linked project id. |
+| `notes` | string | Body notes, without the title. |
+| `created_by` | string or null | Registering author string. |
+| `ask` | string or null | `approve`, `act`, `fyi`; null for ordinary todos. |
+| `context`, `why`, `if_skipped`, `action` | string or null | The four explanations; null when absent. |
+| `notice` | string or null | `unnotified`, `notified`, `closed`; null for ordinary todos. |
+| `notified_by`, `notified_at` | string or null | First notifier's author string and `YYYY-MM-DD HH:MM` in Asia/Taipei. |
+
+### `add_todo`
+
+Flat fields of one todo, plus required `signed_as`; returns `{"id":"...","commit":"abc1234"}`.
+
+| Parameter | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `title` | string | yes | Non-blank, one line, at most 80 characters; for requests, a sentence another agent can relay. |
+| `due`, `time` | string or null | no | `YYYY-MM-DD`, `HH:MM`; empty clears the value. |
+| `repeat` | string or null | no | `daily`, `weekdays`, `weekly`, `monthly`, `yearly`; requires `due`. |
+| `project` | string or null | no | Visible project id; empty means no link. |
+| `notes` | string or null | no | Up to 2,000 characters; default empty. |
+| `ask` | string | no | `approve`, `act`, or `fyi`; requests cannot repeat. |
+| `context` | string | with `ask` | Non-blank, up to 1,000 characters; what this is and how it arose. |
+| `why`, `if_skipped`, `action` | string | with `ask` | Non-blank, up to 400 characters each; why the owner is needed, consequences of skipping, and the exact action (even for `fyi`). |
+| `signed_as` | string | yes | Write signature. |
+
+Writes under the identity's human owner, using the same personal permission rules as `add_todos`. Explanatory fields without `ask` are invalid. Notification stamps cannot be supplied by callers.
+
+### `update_todo`
+
+| Parameter | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `todo_id` | string | yes | Visible personal todo id. Missing or invisible yields `not_found`. |
+| `changes` | object | yes | Nonempty subset of `title`, `due`, `time`, `project`, `notes`, `status`, `repeat`, `ask`, `context`, `why`, `if_skipped`, `action`, `notified`. |
+| `signed_as` | string | yes | Write signature. |
+
+Returns `{"commit":"abc1234"}`, or `{"commit":null}` for no change. Field types and limits match `add_todo`; `status` is `open`, `done`, or `dropped`. A request's `ask` may switch category but cannot be cleared; all four explanations must remain non-blank. An ordinary todo may become a request if the resulting record is complete and has no recurrence.
+
+`notified` accepts only a JSON boolean, only for requests: `true` records the calling author and Taipei time; repeated `true` preserves the first stamp and makes no change. `false` clears both stamps. Closing takes precedence in the derived `notice`; reopening keeps the previous notification state. Acknowledgement leaves the request open. Wrong fields, types, or content yield `invalid`.
 
 ## Examples
 

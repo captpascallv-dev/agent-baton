@@ -256,10 +256,23 @@ Path: `todos/<id>.md`. A new id is `YYYY-MM-DD-HHMMSS-<n>` from the UTC+8 clock.
 | `updated`, `updated_by` | no | Set when the todo changes. |
 | `done_at` | no | Date. Set when status becomes `done`. Cleared when it leaves `done`. |
 | `repeat_from` | no | The id of the todo that spawned this one. |
+| `ask` | requests only | `approve` (owner approval), `act` (owner action), or `fyi` (inform the owner). The title is one sentence another agent can relay directly to the owner. |
+| `context` | with `ask` | Non-blank text, at most 1,000 characters: what this is and how it arose. |
+| `why` | with `ask` | Non-blank text, at most 400 characters: why the owner is needed personally. |
+| `if_skipped` | with `ask` | Non-blank text, at most 400 characters: what happens if skipped. |
+| `action` | with `ask` | Non-blank text, at most 400 characters: exactly what the owner should do, including for `fyi` (e.g. "No action needed; just be aware"). |
+| `notified_by` | server only | Author string of the first notifier, in the same format as `created_by`. |
+| `notified_at` | server only | Quoted `YYYY-MM-DD HH:MM` string in Asia/Taipei (UTC+8). |
 
 The body is a title line plus optional notes. Notes are at most 2,000 characters. Level-2 headings in notes are saved as level-3.
 
 Closing a repeating todo (`done` or `dropped` from `open`) adds the next open todo in the same commit. Doing that twice does not add a second copy. Up to 50 todos can be added in one call.
+
+A request is an ordinary personal todo with `ask`, registered by `created_by`. All four explanatory fields are required with `ask`; they are refused on a todo without `ask`. Requests cannot have `repeat`. Updates can switch `ask` among the three categories but cannot clear it or empty any explanation. An ordinary todo can become a request when the resulting record has all four explanations and no recurrence. Unknown input fields are rejected.
+
+Notification state is derived, never stored: `done` or `dropped` means `closed`; otherwise `notified_at` means `notified`; otherwise a request is `unnotified`. Ordinary todos have no notification state. Reopening preserves the notification record and restores its prior notification state. Updates alone accept the boolean command `notified`: `true` stamps the calling author's name and Taipei time, preserving the first stamp when repeated (no change); `false` clears both stamps to correct a mistake. Callers cannot write the stamp fields directly. Acknowledging a request does not close it; the registering agent marks it done when resolved.
+
+`ask`, `notified_by`, and `notified_at` follow `project` in the YAML front matter. The four explanations precede `created_by`; the body still holds only notes. `list_todos(scope='asks')` lists open requests, unnotified first, then notified, oldest registration first in each group. Other scopes keep their date grouping and append category and notification state to request lines. The web todo page groups open requests first under "For your attention" and lets the owner acknowledge them with "Got it" using the same write endpoint and permissions.
 
 Todos are personal. See [Who can read what](#who-can-read-what). On read, if the viewer cannot see the linked project, the `project` field is omitted from what that viewer is shown. The file on disk still has it.
 

@@ -300,7 +300,7 @@ def todo_view(d: Doc, today: dt.date, by_id: dict[str, Doc], members) -> dict:
     pid = m.get("project")
     due = _as_date(m.get("due"))
     by = m.get("created_by")
-    return {
+    row = {
         "id": d.id, "rel": d.rel, "title": d.title, "status": m.get("status", "open"),
         "bucket": todos.bucket(d, today), "due": due.isoformat() if due else None, "time": todos.time_of(m),
         "project": project_ref(pid, by_id, short, keep_missing=True),
@@ -310,6 +310,11 @@ def todo_view(d: Doc, today: dt.date, by_id: dict[str, Doc], members) -> dict:
         "repeat": m.get("repeat") if m.get("repeat") in todos.REPEATS else None,
         "problem": d.problem,
     }
+    if m.get("ask"):
+        row.update({key: m.get(key) for key in ("ask", *todos.ASK_FIELDS, "notified_at")})
+        row["notice"] = todos.notice(m)
+        row["notified_by"] = local_who(m["notified_by"], members)["name"] if m.get("notified_by") else None
+    return row
 
 
 def todo_list(visible: list[Doc], today: dt.date, by_id, members) -> list[dict]:

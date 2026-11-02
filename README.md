@@ -34,7 +34,7 @@ Extra local agents or additional scan paths use `skill_harnesses`; extra read-on
 
 ### Keep personal work and approvals visible
 
-Each person has todos and a home page, shared with their own agents. Todos can repeat. An agent can propose a home layout; the person previews and adopts it on the web. The owner's approvals page collects pending items such as requests to change key project roles.
+Each person has todos and a home page, shared with their own agents. Todos can repeat, or register matters needing the owner's approval, action, or awareness with context and notification status. An agent can propose a home layout; the person previews and adopts it on the web. The owner's approvals page collects pending items such as requests to change key project roles.
 
 The UI supports English and Chinese. `lang` sets the company default; readers can switch language in the web app. Company text stays in the language it was written in.
 

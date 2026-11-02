@@ -6,6 +6,8 @@ onWorkspaceReset(() => Object.assign(TD, { data: null, view: "month", cursor: nu
 const todoGroups = () => [["overdue", uiText("todos.084")], ["today", uiText("app.068")], ["week", uiText("todos.083")], ["later", uiText("todos.082")], ["nodate", uiText("todos.081")]];
 const weekdays = () => [uiText("todos.080"), uiText("todos.079"), uiText("todos.078"), uiText("todos.077"), uiText("todos.076"), uiText("todos.075"), uiText("todos.074")];
 const REPEAT_NAMES = translatedLabels({ daily: "todos.073", weekdays: "todos.072", weekly: "todos.071", monthly: "todos.070", yearly: "todos.069" });
+const ASK_NAMES = translatedLabels({ approve: "ask.approve", act: "ask.act", fyi: "ask.fyi" });
+const ASK_FIELD_NAMES = translatedLabels({ context: "ask.context", why: "ask.why", if_skipped: "ask.if_skipped", action: "ask.action" });
 
 const isoDay = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const fromIso = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
@@ -59,8 +61,28 @@ function todoRow(t, today, after) {
         when ? h("span", { class: t.bucket === "overdue" ? "red-text" : null, text: when }) : null,
         t.repeat ? h("span", { class: "pill", text: uiText("todos.064", [REPEAT_NAMES[t.repeat]]) }) : null,
         t.project ? h("span", { class: "pill", text: t.project.name }) : null,
-        t.created_by && t.created_by !== DATA_VALUE.self ? h("span", { text: uiText("todos.058", [t.created_by]) }) : null,
-        t.notes ? h("span", { class: "faint", text: uiText("todos.063") }) : null) : null));
+        !t.ask && t.created_by && t.created_by !== DATA_VALUE.self ? h("span", { text: uiText("todos.058", [t.created_by]) }) : null,
+        t.notes ? h("span", { class: "faint", text: uiText("todos.063") }) : null) : null,
+      t.ask ? askInfo(t, after) : null));
+}
+
+function askInfo(t, after) {
+  const fields = ["context", "why", "if_skipped", "action"];
+  const name = value => value === DATA_VALUE.self ? uiText("label.you") : value;
+  const state = t.notice === "closed" ? uiText(t.status === "done" ? "todos.047" : "todos.050")
+    : t.notice === "notified" ? uiText("ask.notified", [name(t.notified_by), t.notified_at]) : uiText("ask.unnotified");
+  return h("div", { class: "ask-info", onclick: e => e.stopPropagation() },
+    h("div", { class: "todo-sub" },
+      h("span", { class: "pill live", text: ASK_NAMES[t.ask] }),
+      h("span", { text: uiText("ask.registered", [name(t.created_by)]) }),
+      h("span", { class: t.notice === "unnotified" ? "ask-pending" : "faint", text: state })),
+    h("details", { class: "ask-details", open: fields.reduce((n, key) => n + t[key].length, 0) <= 360 || null },
+      h("summary", { text: uiText("ask.details") }),
+      fields.map(key => h("section", {}, h("h4", { text: ASK_FIELD_NAMES[key] }), h("p", { text: t[key] })))),
+    t.notice === "unnotified" && allowed(t, "edit", "write_own_todos")
+      ? h("button", { class: "btn small", type: "button", onclick: async () => {
+        if (await saveTodo(t.id, { notified: true })) after();
+      } }, uiText("ask.acknowledge")) : null);
 }
 
 function repeatSelect(value) {
@@ -86,9 +108,18 @@ async function editTodo(t, after) {
   const repeat = repeatSelect(t.repeat || "");
   const notes = h("textarea", { class: "input area", rows: "5", placeholder: uiText("todos.060"), "aria-label": uiText("todos.054") });
   notes.value = t.notes || "";
+  const askFields = {};
+  const askKind = t.ask ? h("select", { class: "input", "aria-label": uiText("ask.category") },
+    ["approve", "act", "fyi"].map(value => h("option", { value, selected: value === t.ask || null, text: ASK_NAMES[value] }))) : null;
+  if (t.ask) for (const key of ["context", "why", "if_skipped", "action"]) {
+    askFields[key] = h("textarea", { class: "input area", rows: "3", maxlength: key === "context" ? "1000" : "400",
+      "aria-label": ASK_FIELD_NAMES[key] });
+    askFields[key].value = t[key];
+  }
   const save = async (extra, text) => {
     const changes = { title: title.value, due: due.value, time: time.value, project: proj.value, repeat: repeat.value,
                       notes: notes.value, ...extra };
+    if (t.ask) Object.assign(changes, { ask: askKind.value }, Object.fromEntries(Object.entries(askFields).map(([k, el]) => [k, el.value])));
     if (await saveTodo(t.id, changes, text)) { closeLayer(); after(); }
   };
   drawer(uiText("todos.008"),
@@ -100,7 +131,9 @@ async function editTodo(t, after) {
     h("div", { class: "form" },
       h("label", {}, h("span", { text: uiText("manage.104") }), title),
       h("div", { class: "form-row" }, h("label", {}, h("span", { text: uiText("manage.093") }), due), h("label", {}, h("span", { text: uiText("app.011") }), time)),
-      h("div", { class: "form-row" }, h("label", {}, h("span", { text: uiText("app.008") }), proj), h("label", {}, h("span", { text: uiText("todos.056") }), repeat)),
+      h("div", { class: "form-row" }, h("label", {}, h("span", { text: uiText("app.008") }), proj),
+        t.ask ? h("label", {}, h("span", { text: uiText("ask.category") }), askKind) : h("label", {}, h("span", { text: uiText("todos.056") }), repeat)),
+      t.ask ? Object.entries(askFields).map(([key, el]) => h("label", {}, h("span", { text: ASK_FIELD_NAMES[key] }), el)) : null,
       t.repeat ? h("p", { class: "note faint", text: uiText("todos.055") }) : null,
       h("label", {}, h("span", { text: uiText("todos.054") }), notes)),
     h("div", { class: "form-btns" },
@@ -223,12 +256,16 @@ async function renderTodos() {
   try { hasAgent = ((await api("/api/agents")).agents || []).length > 0; }
   catch (e) { if (e.message === "401") return; }
   const open = items.filter(t => t.status === "open");
+  const asks = open.filter(t => t.ask).sort((a, b) =>
+    Number(a.notice !== "unnotified") - Number(b.notice !== "unnotified") || a.created.localeCompare(b.created) || a.id.localeCompare(b.id));
   const closed = items.filter(t => t.status !== "open").sort((a, b) => (b.done_at || b.created).localeCompare(a.done_at || a.created));
   const add = quickAdd(projects, renderTodos, TD.picked);
   const list = h("div", { class: "card todo-list" });
   const drawList = () => {
     const parts = [];
-    const shown = TD.picked ? open.filter(t => t.due === TD.picked) : open;
+    if (asks.length) parts.push(h("div", { class: "todo-group" }, uiText("ask.group"), h("span", { class: "n", text: asks.length })),
+      asks.map(t => todoRow(t, today, renderTodos)));
+    const shown = open.filter(t => !t.ask && (!TD.picked || t.due === TD.picked));
     if (TD.picked) parts.push(h("div", { class: "todo-filter" }, uiText("todos.018", [md(TD.picked)]),
       h("button", { class: "btn ghost small", type: "button", onclick: () => { TD.picked = null; renderTodos(); } }, uiText("todos.017"))));
     for (const [key, name] of todoGroups()) {
@@ -237,7 +274,7 @@ async function renderTodos() {
       parts.push(h("div", { class: "todo-group" + (key === "overdue" ? " red" : "") }, name, h("span", { class: "n", text: g.length })),
         g.map(t => todoRow(t, today, renderTodos)));
     }
-    if (!shown.length) parts.push(empty(TD.picked ? uiText("todos.016") : uiText("todos.015"), TD.picked ? uiText("todos.014") : (hasAgent ? uiText("todos.013") : uiText("todos.012"))));
+    if (!shown.length && !asks.length) parts.push(empty(TD.picked ? uiText("todos.016") : uiText("todos.015"), TD.picked ? uiText("todos.014") : (hasAgent ? uiText("todos.013") : uiText("todos.012"))));
     if (closed.length && !TD.picked) {
       parts.push(h("button", { class: "todo-more", type: "button", onclick: () => { TD.showDone = !TD.showDone; drawList(); } },
         TD.showDone ? uiText("todos.011") : uiText("todos.010", [closed.length])));
