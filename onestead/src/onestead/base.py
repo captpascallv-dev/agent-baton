@@ -17,7 +17,7 @@ from pathlib import Path
 
 from . import gitops
 from .apps import AppMixin
-from .handover import _status_entries
+from .handover import _status_entries, insiders, open_applies
 from .home import HomeMixin
 from .manage import ID_RE, MAX_BODY, ManageMixin
 from .projectbody import (SUMMARY_SECTIONS, _apply_summary_sections, _clean_summary_sections,
@@ -27,8 +27,9 @@ from .skills import SkillMixin
 from .sites import SiteMixin
 from .todos import TodoMixin, notice
 from .workspace import TokenMixin
-from .store import (LEVEL_NAMES, LEVELS, BaseError, Doc, Forbidden, NotFound, StorageError, Store, Viewer, clean_project_paths,
-                    make_viewer, member_cards, member_keys, now_taipei, owner_name_at, project_path_list)
+from .store import (LEVEL_NAMES, LEVELS, STATUS_ARCHIVE_DIR, BaseError, Doc, Forbidden, NotFound, StorageError, Store,
+                    Viewer, archived_status_docs, clean_project_paths, make_viewer, member_cards, member_keys, now_taipei,
+                    owner_name_at, project_path_list)
 from .textutil import (MAX_TEXT, SECRET_PATTERNS, _ago, _as_date, _cell, _check_signature,  # noqa: F401
                        _check_text, _dump_front, _strip_title, soften_headings)
 
@@ -37,6 +38,11 @@ NOT_FOUND = "not_found_or_denied"
 NEW_PROJECT_STATES = ("进行中", "维护中", "构想中", "暂停")
 PROJECT_BODY = "## 目标\n\n## 现状\n\n## 下一步\n\n## 分工\n\n## 入口"
 _STATUS_DATE = re.compile(r"^## (\d{4}-\d{2}-\d{2})(?:[ T]\d{2}:\d{2})?(?:$| )")
+_STATUS_HEAD = re.compile(r"^## (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) · (.+)$")
+STATUS_KEEP = 20  # 归档后 status.md 留最近这么多条
+STATUS_ARCHIVE_AT = 40  # 超过这么多条才归档一次：每次追加都会把整个文件存进 git，文件小仓库才不涨
+STATUS_RECENT_HOURS = 2  # 同一项目里同一身份和署名这么久内又记，提醒并成一条
+STATUS_LONG = 800  # 一条进展超过这么多字，提醒只写结果
 
 KIND_ORDER = {"handbook": 0, "project": 1, "project-status": 2, "project-links": 3,
               "decision": 4, "asset": 5, "person": 6, "home": 7, "todo": 8, "app": 9, "skill": 10}
@@ -326,6 +332,9 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
             n = max(0, int(status_entries))
             shown = entries[-n:] if n else []
             out += ["", tr("agent.131", v0=len(shown), v1=len(entries)), ""]
+            months = [p.stem for p in sorted((self.root / status.rel.rsplit("/", 1)[0] / STATUS_ARCHIVE_DIR).glob("*.md"))]
+            if months:
+                out += [tr("status.archived", months="、".join(months)), ""]
             out += shown if shown else [tr("agent.152")]
         apps = self._project_app_lines(viewer, visible, doc.id)
         if apps:
@@ -370,7 +379,7 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
             hits = self._projected_hits(viewer, docs, terms)
         else:
             hits = []
-            for d in visible:
+            for d in visible + archived_status_docs(self.root, visible):
                 if d.kind == "person" and d.meta.get("archived") is True:
                     continue
                 if all(t in d.raw.lower() for t in terms):
@@ -389,7 +398,7 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
     def _projected_hits(self, viewer: Viewer, docs: list[Doc], terms: list[str]) -> list[tuple]:
         """远程和按授权读只搜网页上能显示的那一套：不是成员原文，也不是 Skill 备注正文。"""
         hits = []
-        for d in documents(viewer, docs):
+        for d in documents(viewer, docs + archived_status_docs(self.root, viewer.visible(docs))):
             parts = [d.title, d.body]
             if d.kind == "home":
                 parts.append(str(d.meta.get("note") or ""))
@@ -503,6 +512,48 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
         text = soften_headings(text)
         return f"## {self._now():%Y-%m-%d %H:%M} · {who}\n\n{text}\n"
 
+    def _status_hint(self, current: str, entry: str, text: str) -> str:
+        """只提醒不拦：同一项目里同一身份和署名两小时内又记，或者一条写得太长。"""
+        hints = []
+        entries = _status_entries(current)
+        last = _STATUS_HEAD.match(entries[-1].split("\n", 1)[0]) if entries else None
+        new = _STATUS_HEAD.match(entry.split("\n", 1)[0])
+        if last and new and last.group(2).strip() == new.group(2).strip():
+            gap = dt.datetime.fromisoformat(new.group(1)) - dt.datetime.fromisoformat(last.group(1))
+            if dt.timedelta(0) <= gap < dt.timedelta(hours=STATUS_RECENT_HOURS):
+                hints.append(tr("status.hint_recent", hours=STATUS_RECENT_HOURS))
+        if len(text) > STATUS_LONG:
+            hints.append(tr("status.hint_long", limit=STATUS_LONG))
+        return "".join(hints)
+
+    def _archive_status(self, rel: str, content: str, title: str, docs: list[Doc]) -> dict[str, str]:
+        """超过 STATUS_ARCHIVE_AT 条时把较早的进展按月移到 status/YYYY-MM.md，status.md 留最近 STATUS_KEEP 条。
+        还没处理的接任申请留在原处；没有日期的条目跟着前一条的月份，开头就没日期的也留下。"""
+        entries = _status_entries(content)
+        if len(entries) <= STATUS_ARCHIVE_AT:
+            return {}
+        head = re.split(r"\n(?=## )", "\n" + content, maxsplit=1)[0].strip("\n")
+        holds = {index for index, _ in open_applies(entries, insiders(docs)).values()}
+        cut = len(entries) - STATUS_KEEP
+        month, kept, moved = None, [], {}
+        for index, entry in enumerate(entries):
+            matched = _STATUS_DATE.match(entry.split("\n", 1)[0])
+            month = matched.group(1)[:7] if matched else month
+            if index >= cut or index in holds or month is None:
+                kept.append(entry)
+            else:
+                moved.setdefault(month, []).append(entry)
+        if not moved:
+            return {}
+        files = {rel: (head + "\n\n" if head else "") + "\n\n".join(kept) + "\n"}
+        folder = f"{rel.rsplit('/', 1)[0]}/{STATUS_ARCHIVE_DIR}"
+        for month, items in moved.items():
+            path = self.root / folder / f"{month}.md"
+            old = (path.read_text(encoding="utf-8").rstrip("\n") if path.exists()
+                   else f"# {title} · 进展归档 {month}\n\n从 status.md 移来的较早进展，只往后追加。")
+            files[f"{folder}/{month}.md"] = old + "\n\n" + "\n\n".join(items) + "\n"
+        return files
+
     def _may_create_project(self, viewer: Viewer) -> bool:
         """全读且能写：主人、本机伙伴，以及远程接入的全读伙伴（如网页版 ChatGPT）。只看指定项目的成员不能建。"""
         return bool(viewer.known and viewer.valid and viewer.can_write
@@ -561,24 +612,28 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
         return commit
 
     def update_project_status(self, project_id: str, text: str, signed_as: str | None = None) -> str:
-        rel, commit = self._append_status_commit(project_id, text, signed_as)
-        return tr("agent.062", v0=rel, v1=commit)
+        rel, commit, hint = self._append_status_commit(project_id, text, signed_as)
+        return tr("agent.062", v0=rel, v1=commit) + hint
 
-    def _append_status_commit(self, project_id: str, text: str, signed_as: str | None = None) -> tuple[str, str]:
+    def _append_status_commit(self, project_id: str, text: str,
+                              signed_as: str | None = None) -> tuple[str, str, str]:
         signed_as = self._sign(signed_as)
         text = _check_text(tr("agent.076"), text)
         with self._write():
-            viewer, _, visible = self._writer(operation="update_project_status")
+            viewer, docs, visible = self._writer(operation="update_project_status")
             project = self._find(visible, "project", project_id)
             if not project:
                 raise NotFound(tr("agent.144", v0=project_id, v1=tr(NOT_FOUND)))
             self._granted_project(viewer, project)
             rel, current = self._status_file(project, visible)
-            content = current.rstrip("\n") + "\n\n" + self._entry(viewer.key, signed_as, text)
+            entry = self._entry(viewer.key, signed_as, text)
+            content = current.rstrip("\n") + "\n\n" + entry
+            files = {rel: content} | self._archive_status(rel, content, project.title, docs)
+            hint = "" if viewer.is_owner else self._status_hint(current, entry, text)
             first = text.split("\n", 1)[0][:40]
-            commit = gitops.write_and_commit(self.root, {rel: content}, f"进展：{project.id} — {first}",
+            commit = gitops.write_and_commit(self.root, files, f"进展：{project.id} — {first}",
                                              "update_project_status", viewer.key, signed_as)
-        return rel, commit
+        return rel, commit, hint
 
     def update_project_summary(self, project_id: str, sections: dict, signed_as: str | None = None) -> str:
         """改现状、下一步、分工、入口。能记进展的身份就能改，判断和 update_project_status 同一套。"""

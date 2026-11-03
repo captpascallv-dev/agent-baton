@@ -32,37 +32,47 @@ def _status_entries(body: str) -> list[str]:
     return [p.strip("\n") for p in parts if p.startswith("## ")]
 
 
-def pending_handovers(visible: list[Doc], by_id: dict[str, Doc]) -> list[dict]:
-    # 按有效权限认申请作者，不能只看 agent 自填的 full；不批仍只认 主人。
-    insiders = {config.owner_key()}
-    for key in member_keys(visible):
-        viewer = make_viewer(visible, key, allow_owner=True)
+def insiders(docs: list[Doc]) -> set[str]:
+    """谁的接任申请和交接记录算数：主人，加上有效、不按授权读的成员。按有效权限认，不能只看 agent 自填的 full。"""
+    found = {config.owner_key()}
+    for key in member_keys(docs):
+        viewer = make_viewer(docs, key, allow_owner=True)
         if viewer.valid and not viewer.assigned:
-            insiders.add(key)
+            found.add(key)
+    return found
+
+
+def open_applies(entries: list[str], insiders: set[str]) -> dict[str, tuple[int, dict]]:
+    """每个角色还算数的接任申请：(第几条, 申请内容)。待批准名单和进展归档共用这一份，免得两边认的不一样。"""
+    pending: dict[str, tuple[int, dict]] = {}
+    for index, entry in enumerate(entries):
+        head, _, text = entry.partition("\n")
+        author = _entry_author(head)
+        if author not in insiders:
+            continue
+        matched = APPLY_RE.search(text)
+        if matched:
+            pending[matched.group(1)] = (index, {"role": matched.group(1), "from": matched.group(2),
+                                                 "to": matched.group(3), "head": head[3:].strip()})
+            continue
+        matched = HANDOVER_RE.search(text)
+        if matched:  # 这个角色已经换过人，之前的申请都算处理了
+            pending.pop(matched.group(1), None)
+            continue
+        matched = REJECT_RE.search(text)
+        if matched and author == config.owner_key() and pending.get(matched.group(1), (0, {}))[1].get("to") == matched.group(3):
+            pending.pop(matched.group(1), None)
+    return pending
+
+
+def pending_handovers(visible: list[Doc], by_id: dict[str, Doc]) -> list[dict]:
+    known = insiders(visible)
     out = []
     for d in visible:
         if d.kind != "project-status":
             continue
         pid = d.rel.split("/")[1]
-        pending: dict[str, dict] = {}
-        for entry in _status_entries(d.body):
-            head, _, text = entry.partition("\n")
-            author = _entry_author(head)
-            if author not in insiders:
-                continue
-            matched = APPLY_RE.search(text)
-            if matched:
-                pending[matched.group(1)] = {"project": pid, "role": matched.group(1), "from": matched.group(2),
-                                              "to": matched.group(3), "head": head[3:].strip()}
-                continue
-            matched = HANDOVER_RE.search(text)
-            if matched:  # 这个角色已经换过人，之前的申请都算处理了
-                pending.pop(matched.group(1), None)
-                continue
-            matched = REJECT_RE.search(text)
-            if matched and author == config.owner_key() and pending.get(matched.group(1), {}).get("to") == matched.group(3):
-                pending.pop(matched.group(1), None)
-        out.extend(pending.values())
+        out.extend({"project": pid, **item} for _, item in open_applies(_status_entries(d.body), known).values())
     for item in out:
         item["project_name"] = short(by_id[item["project"]].title) if item["project"] in by_id else item["project"]
     return out

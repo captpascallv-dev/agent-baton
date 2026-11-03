@@ -26,7 +26,7 @@ from .. import config, usage
 from ..base import _status_entries, _strip_title
 from ..connect import connect_prompt
 from ..redact import html, text_fields
-from ..store import BaseError, member_keys, now_taipei, owner_name
+from ..store import BaseError, archived_status_docs, member_keys, now_taipei, owner_name
 from . import history, views
 from .admin import AdminApi
 from .auth import LocalAuth, RemoteAuth
@@ -148,7 +148,9 @@ class Workspace(HomeApi, AdminApi, Guard, WorkspaceCore):
 
     async def doc(self, request: Request):
         viewer, docs, visible, by_rel, by_id, members = self.snapshot(request)
-        d = by_rel.get(request.query_params.get("rel", ""))
+        rel = request.query_params.get("rel", "")
+        # 归档的进展不在快照里，搜索点进来时按同一套可见性现读。
+        d = by_rel.get(rel) or next((a for a in archived_status_docs(self.root, visible) if a.rel == rel), None)
         if not d:
             return JSONResponse({"error": tr("agent.612")}, status_code=404)
         return JSONResponse(projection_for(viewer).doc(d, viewer, docs))
@@ -156,7 +158,7 @@ class Workspace(HomeApi, AdminApi, Guard, WorkspaceCore):
     async def search(self, request: Request):
         viewer, docs, visible, *_ = self.snapshot(request)
         query = request.query_params.get("q", "")
-        return JSONResponse({"hits": projection_for(viewer).search(visible, query)})
+        return JSONResponse({"hits": projection_for(viewer).search(visible + archived_status_docs(self.root, visible), query)})
 
     async def todo_page(self, request: Request):
         viewer, docs, visible, by_rel, by_id, members = self.snapshot(request)

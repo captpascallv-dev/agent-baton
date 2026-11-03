@@ -27,6 +27,7 @@ apps/<id>.md                   app
 skills/<id>.md                 skill note
 projects/<id>/project.md       project
 projects/<id>/status.md        progress log, no front matter
+projects/<id>/status/<YYYY-MM>.md   older progress moved out of status.md, by month
 projects/<id>/links.md         optional links, no front matter
 ```
 
@@ -163,6 +164,10 @@ Shipped the preview. Notes are in the shop repo. Next is the photo pass.
 The clock is fixed at UTC+8. It does not follow daylight saving. The heading is `## YYYY-MM-DD HH:MM · <who>`. `<who>` is the member key, or `member-key · signed-as` when the call set `signed_as`.
 
 The text is at most 4,000 characters. A line in the text that starts with `## ` is saved as `### `, so the log cannot be split into a fake entry.
+
+When a status write leaves more than 40 entries in `status.md`, the same commit moves the older ones to `projects/<id>/status/<YYYY-MM>.md` by the month in their heading and keeps the latest 20 in `status.md`. An entry with no date goes with the entry before it. A role request that is still pending stays in `status.md`. Archive files follow the project's access rules. Normal reads do not load them; search does, and `get_project` lists which months exist. Every append stores the whole file in git again, so a short `status.md` keeps the repository small.
+
+A status write still succeeds when it looks like process noise, but the reply adds a reminder in two cases: the previous entry in the same project has the same `<who>` and is less than 2 hours old, or the text is over 800 characters. The owner gets no reminder.
 
 The same entry shape is used for a role handover. A key role (`key: true`) is not changed on the first call. That call only appends a request. A later approval updates `who` and `since` on the role and appends a handover entry. The pending list parses those entries. The sentences are fixed Chinese in this release. They insert the owner's display name: the title on the member whose `agent_key` is `owner_key`, or the key itself when that title is missing. This note does not quote them.
 
