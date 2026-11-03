@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>CliWatch.Collection</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="CliWatch.Contracts"><HintPath>$(CliWatchRuntimeDirectory)/CliWatch.Contracts.dll</HintPath><ExternallyResolved>true</ExternallyResolved></Reference>
+  </ItemGroup>
+</Project>

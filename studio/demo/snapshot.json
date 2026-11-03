@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "mode": "demo",
+  "source": {
+    "name": "CLI Watch",
+    "collectedAt": "2026-10-23T02:58:00.000Z",
+    "publishedAt": "2026-10-23T02:58:00.000Z",
+    "quality": "Fresh",
+    "stale": false,
+    "status": "live",
+    "error": null,
+    "coverage": "演示数据"
+  },
+  "projects": [
+    {
+      "id": "todo-app",
+      "name": "Todo App",
+      "projectLabel": "Todo App",
+      "summary": "一个待办列表示例。",
+      "phase": "running_active",
+      "statusLabel": "进行中",
+      "statusBasis": "演示数据",
+      "goal": "把登录超时修好，并补上接口说明。",
+      "isCurrent": true,
+      "quality": "Fresh",
+      "lastFactAt": "2026-10-23T02:57:30.000Z",
+      "observedActivityAt": "2026-10-23T02:57:30.000Z",
+      "works": [
+        {
+          "id": "fix-login",
+          "actorName": "Claude",
+          "actorKind": "claude",
+          "role": "executor",
+          "route": "watch:running_active",
+          "taskName": "修复登录超时",
+          "summary": "登录请求超过三十秒还没有返回。",
+          "model": "claude-sonnet-4-5",
+          "effort": "medium",
+          "blocker": null,
+          "quality": "Fresh",
+          "isHistorical": false,
+          "runtimeState": "running",
+          "runtimeModel": "claude-sonnet-4-5",
+          "axes": {
+            "process": "alive",
+            "turn": "active",
+            "execution": "running",
+            "transport": "unknown",
+            "delivery": "pending",
+            "callback": "unknown",
+            "leadHandling": "unknown",
+            "acceptance": "unknown",
+            "adoption": "unknown",
+            "goal": "unknown"
+          },
+          "artifacts": [{ "label": "登录超时笔记", "state": "present" }]
+        },
+        {
+          "id": "api-notes",
+          "actorName": "DeepSeek",
+          "actorKind": "dsh",
+          "role": "executor",
+          "route": "watch:delivered",
+          "taskName": "整理接口说明",
+          "summary": "接口说明已经交卷，等检查。",
+          "model": "deepseek-v3",
+          "effort": null,
+          "blocker": null,
+          "quality": "Fresh",
+          "isHistorical": false,
+          "runtimeState": "idle",
+          "runtimeModel": null,
+          "axes": {
+            "process": "dead",
+            "turn": "quiet",
+            "execution": "returned",
+            "transport": "complete",
+            "delivery": "complete",
+            "callback": "unknown",
+            "leadHandling": "unknown",
+            "acceptance": "pending",
+            "adoption": "unknown",
+            "goal": "unknown"
+          },
+          "artifacts": [{ "label": "接口说明", "state": "present" }]
+        }
+      ]
+    },
+    {
+      "id": "notes-app",
+      "name": "Notes App",
+      "projectLabel": "Notes App",
+      "summary": "一个笔记应用示例。",
+      "phase": "running_active",
+      "statusLabel": "进行中",
+      "statusBasis": "演示数据",
+      "goal": "空状态也能看懂下一步。",
+      "isCurrent": true,
+      "quality": "Fresh",
+      "lastFactAt": "2026-10-23T02:56:00.000Z",
+      "observedActivityAt": "2026-10-23T02:56:00.000Z",
+      "works": [
+        {
+          "id": "empty-state",
+          "actorName": "Codex",
+          "actorKind": "codex",
+          "role": "executor",
+          "route": "watch:running_active",
+          "taskName": "补上空白状态",
+          "summary": "笔记列表为空时，补一句下一步可以做什么。",
+          "model": "gpt-4.1",
+          "effort": "medium",
+          "blocker": null,
+          "quality": "Fresh",
+          "isHistorical": false,
+          "runtimeState": "running",
+          "runtimeModel": "gpt-4.1",
+          "axes": {
+            "process": "alive",
+            "turn": "active",
+            "execution": "running",
+            "transport": "unknown",
+            "delivery": "pending",
+            "callback": "unknown",
+            "leadHandling": "unknown",
+            "acceptance": "unknown",
+            "adoption": "unknown",
+            "goal": "unknown"
+          },
+          "artifacts": []
+        }
+      ]
+    }
+  ],
+  "issues": [],
+  "agentRuntime": {
+    "observedAt": "2026-10-23T02:58:00.000Z",
+    "agents": [
+      {
+        "agentId": "claude",
+        "observedAt": "2026-10-23T02:58:00.000Z",
+        "sourceStatus": "live",
+        "openWindows": 1,
+        "openSessions": 2,
+        "activeSessions": 1,
+        "idleSessions": 1,
+        "unknownSessions": 0,
+        "instances": [
+          { "id": "claude:0", "kind": "conversation", "state": "running", "model": "claude-sonnet-4-5" },
+          { "id": "claude:1", "kind": "conversation", "state": "idle", "model": null }
+        ],
+        "coverage": "演示：一个会话正在生成，另一个在等输入。"
+      },
+      {
+        "agentId": "codex",
+        "observedAt": "2026-10-23T02:58:00.000Z",
+        "sourceStatus": "live",
+        "openWindows": 1,
+        "openSessions": 1,
+        "activeSessions": 1,
+        "idleSessions": 0,
+        "unknownSessions": 0,
+        "instances": [
+          { "id": "codex:0", "kind": "conversation", "state": "running", "model": "gpt-4.1" }
+        ],
+        "coverage": "演示：一个会话正在生成。"
+      },
+      {
+        "agentId": "dsh",
+        "observedAt": "2026-10-23T02:58:00.000Z",
+        "sourceStatus": "live",
+        "openWindows": 1,
+        "openSessions": 1,
+        "activeSessions": 0,
+        "idleSessions": 1,
+        "unknownSessions": 0,
+        "instances": [
+          { "id": "dsh:0", "kind": "conversation", "state": "idle", "model": null }
+        ],
+        "coverage": "演示：窗口开着，会话在等输入。"
+      },
+      {
+        "agentId": "grok",
+        "observedAt": "2026-10-23T02:58:00.000Z",
+        "sourceStatus": "live",
+        "openWindows": 0,
+        "openSessions": 0,
+        "activeSessions": 0,
+        "idleSessions": 0,
+        "unknownSessions": 0,
+        "instances": [],
+        "coverage": "演示：没有打开窗口。"
+      },
+      {
+        "agentId": "cursor",
+        "observedAt": "2026-10-23T02:58:00.000Z",
+        "sourceStatus": "live",
+        "openWindows": 1,
+        "openSessions": 1,
+        "activeSessions": 1,
+        "idleSessions": 0,
+        "unknownSessions": 0,
+        "instances": [
+          { "id": "cursor:0", "kind": "conversation", "state": "running", "model": "gpt-4.1-mini" }
+        ],
+        "coverage": "演示：一个会话正在生成。"
+      },
+      {
+        "agentId": "pi",
+        "observedAt": "2026-10-23T02:58:00.000Z",
+        "sourceStatus": "live",
+        "openWindows": 1,
+        "openSessions": 1,
+        "activeSessions": 0,
+        "idleSessions": 1,
+        "unknownSessions": 0,
+        "instances": [
+          { "id": "pi:0", "kind": "conversation", "state": "idle", "model": null }
+        ],
+        "coverage": "演示：窗口开着，会话在等输入。"
+      },
+      {
+        "agentId": "opencode",
+        "observedAt": "2026-10-23T02:58:00.000Z",
+        "sourceStatus": "live",
+        "openWindows": 1,
+        "openSessions": 1,
+        "activeSessions": 0,
+        "idleSessions": 1,
+        "unknownSessions": 0,
+        "instances": [
+          { "id": "opencode:0", "kind": "conversation", "state": "idle", "model": null }
+        ],
+        "coverage": "演示：窗口开着，会话在等输入。"
+      },
+      {
+        "agentId": "grok-bot",
+        "observedAt": "2026-10-23T02:58:00.000Z",
+        "sourceStatus": "live",
+        "openWindows": 1,
+        "openSessions": 1,
+        "activeSessions": 1,
+        "idleSessions": 0,
+        "unknownSessions": 0,
+        "instances": [
+          { "id": "grok-bot:0", "kind": "conversation", "state": "running", "model": "grok-3" }
+        ],
+        "coverage": "演示：一个会话正在生成。"
+      }
+    ]
+  }
+}

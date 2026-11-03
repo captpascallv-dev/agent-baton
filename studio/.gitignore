@@ -1,0 +1,9 @@
+node_modules/
+dist/
+bridge/bin/
+bridge/obj/
+bridge/state/
+qa/
+work/
+*.local.json
+tests/.*-fixtures/

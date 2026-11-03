@@ -1,0 +1,12 @@
+{
+  "name": "@ai-moe-studio/dsh-status-observer",
+  "version": "0.1.0-candidate.1",
+  "private": true,
+  "type": "module",
+  "description": "Local metadata-only status observer candidate for DSH 0.2.1-rc.2",
+  "main": "index.mjs",
+  "exports": { ".": "./index.mjs", "./cordis.patch.yml": "./cordis.patch.yml" },
+  "engines": { "dsh": "=0.2.1-rc.2", "node": ">=22" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "files": ["index.mjs", "state.mjs", "publisher.mjs", "private-directory.ps1", "cordis.patch.yml", "README.md"]
+}

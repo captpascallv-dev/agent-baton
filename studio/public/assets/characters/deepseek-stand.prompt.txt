@@ -1,0 +1,17 @@
+Mode: built-in Image Gen; transparent_background=true.
+Reference 1: deepseek-chibi.png (character identity and costume).
+Reference 2: kimi-chibi.png (standing proportions and style).
+Final selected image: first generation, 1024 x 1536 RGBA.
+
+Use case: identity-preserve.
+Asset type: one transparent PNG character sprite for the existing 2.5D anime research room.
+
+Input image 1 is the identity and costume reference: the blue-haired whale maid DeepSeek chibi. Input image 2 is only the standing-pose chibi proportion and rendering-style reference: Kimi. Do not mix Kimi's identity or costume into the whale maid.
+
+Create ONE new full-body standing pose of exactly the whale maid from image 1. Preserve her recognizable face, large blue eyes, deep blue hair fading into bright cyan at the tips, curved ahoge, white frilled maid headband, small bright blue bows beside whale-fin ears, navy maid dress with delicate gold trim, white frilled apron, navy bow and blue gem at the collar, large dark blue whale tail, white socks, and dark round-toed Mary Jane shoes. Keep the same rich anime linework, soft luminous shading, color saturation and painted highlights as the references.
+
+Pose: body and feet oriented toward the viewer's RIGHT in a three-quarter side view; face also slightly to the right but clearly readable, cheerful open-eyed smile. She is standing upright, with one foot only slightly in front of the other, a stable gentle walking-ready stance. Arms naturally bent near her sides, hands empty and loosely closed. Both feet and shoes must be fully visible. The tail should remain clearly recognizable behind her without covering her feet.
+
+Match the standing chibi head/body proportions and compact full-body silhouette of image 2, while keeping image 1's identity and costume. Do not elongate her into adult fashion proportions. Keep her hair long and wavy. This is the same character simply standing up.
+
+Canvas: portrait, about 1200 pixels high if available. Entire character from ahoge tip to shoe soles fills most of the height, with a small clear transparent margin on all four sides. Center the character and keep every hair tip, fin, bow, tail and shoe within the canvas. True transparent alpha background, no painted checkerboard, no scene, no floor, no shadow disk, no stool, no furniture, no tablet or book, no props, no text or watermark.

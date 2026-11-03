@@ -1,0 +1,4 @@
+- insert:
+    - id: studio-status-observer
+      name: '@ai-moe-studio/dsh-status-observer'
+      disabled: true
