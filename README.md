@@ -54,7 +54,7 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 
 | 目录 | 干什么 |
 | --- | --- |
-| [`guards/`](guards/) | **内存护栏**：测试和构建套 Windows Job 内存上限，再加一个钩子拦住没套上限的测试命令，一群 agent 同时跑测试也不会把整机拖垮 |
+| [`guards/`](guards/) | **内存护栏**：测试和构建套 Windows Job 内存上限，再加一个钩子拦住没套上限的测试命令，一群 agent 同时跑测试也不会把整机拖垮。删除护栏在 [`file-guard/`](guards/file-guard/)，删和移只认解析后的字面绝对路径 |
 | [`tools/`](tools/) | `quota_pace.py` 读额度快照算各家消耗进度；`extract_dialogue.py` 把旧会话提成对话正文，换新会话时交接用 |
 
 **可选接入**

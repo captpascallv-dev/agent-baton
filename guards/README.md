@@ -1,8 +1,8 @@
 # guards：给执行者加护栏
 
-一群 agent 同时在一台电脑上跑测试、编译，最怕的不是哪张卡写错，而是一批没设上限的测试把整机内存吃光：编辑器、聊天工具、所有在跑的会话一起崩，最后只能强制关机。贡献者遇到过一次：一批 pytest 吃到约 72 GB（机器 32 GB），整机卡死。这里的两个文件就是事后装上的护栏，之后再没出过事。
+一群 agent 同时在一台电脑上跑测试、编译，最怕的不是哪张卡写错，而是一批没设上限的测试把整机内存吃光：编辑器、聊天工具、所有在跑的会话一起崩，最后只能强制关机。贡献者遇到过一次：一批 pytest 吃到约 72 GB（机器 32 GB），整机卡死。这里的两个文件就是事后装上的护栏，之后再没出过事。删除和移动的可见命令护栏在 [`file-guard/`](file-guard/README.md)。
 
-> guards/ holds two small Windows guards: `capped_run.py` runs any command tree inside a Windows Job with a hard memory cap and a wall-clock timeout; `guard_test_runs.py` is a PreToolUse hook that refuses test commands not wrapped by it.
+> guards/ holds two small Windows guards: `capped_run.py` runs any command tree inside a Windows Job with a hard memory cap and a wall-clock timeout; `guard_test_runs.py` is a PreToolUse hook that refuses test commands not wrapped by it. The deletion guard lives in [`file-guard/`](file-guard/README.md).
 
 ## 两个文件
 
