@@ -390,6 +390,8 @@ def main() -> None:
     if sys.argv[1:2] == ["--remote"]:  # python -m onestead.server --remote [端口]
         return main_remote(sys.argv[2:])
     root = config.data_dir()
+    # 客户端按 UTF-8 读服务的错误输出；Windows 中文系统默认 GBK，中文日志会被读坏。
+    sys.stderr.reconfigure(encoding="utf-8")
     build_server(root, config.env("AGENT")).run("stdio")
 
 

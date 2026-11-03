@@ -100,9 +100,9 @@ def test_fetch_reads_and_strips_html(shared):
 
 
 def test_office_files_are_extracted(shared):
-    import docx
-    import openpyxl
-    from pptx import Presentation
+    docx = pytest.importorskip("docx")
+    openpyxl = pytest.importorskip("openpyxl")
+    Presentation = pytest.importorskip("pptx").Presentation
 
     d = docx.Document()
     d.add_paragraph("Word 暗号西瓜")
@@ -424,6 +424,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def test_old_excel_xls_is_extracted(shared):
+    pytest.importorskip("xlrd")
     (shared.root / "报告" / "库存.xls").write_bytes((FIXTURES / "folders-sample.xls").read_bytes())
     assert [row["title"] for row in folders.search("chatgpt", ["山竹"])] == ["调研/报告/库存.xls"]
     text = folders.fetch("chatgpt", "folder:research/报告/库存.xls")["text"]
@@ -442,8 +443,9 @@ def _zip_with(path, members: dict):
 def test_zip_members_are_extracted_and_filtered(shared):
     import io
 
-    import openpyxl
     from onestead.i18n import text as tr
+
+    openpyxl = pytest.importorskip("openpyxl")
 
     book = io.BytesIO()
     wb = openpyxl.Workbook()
