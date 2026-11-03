@@ -12,7 +12,7 @@ Get-ChildItem (Join-Path $root 'jobs/*/job.json') -ErrorAction SilentlyContinue 
     $procId = 0
     if ($null -ne $j.host_pid -and "$($j.host_pid)" -ne '') { $procId = [int]$j.host_pid }
     $alive = $procId -gt 0 -and [bool](Get-Process -Id $procId -ErrorAction SilentlyContinue)
-    $watchMinutes = 29
+    $watchMinutes = 720
     if ($j.PSObject.Properties.Name -contains 'watch_minutes' -and $j.watch_minutes) { $watchMinutes = $j.watch_minutes }
     "PENDING $($j.job_id) | $($j.executor) | $($j.task) | pid=$procId alive=$alive | outbox=$($j.outbox)"
     "  WATCH: pwsh -NoProfile -File `"$PSScriptRoot/Wait-Delivery.ps1`" -JobDir `"$($j.outbox)`" -ProcessId $procId -TimeoutMinutes $watchMinutes -IntervalSeconds 20"

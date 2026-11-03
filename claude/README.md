@@ -92,13 +92,13 @@ pwsh -NoProfile -File ./bin/Dispatch.ps1 -Executor pi -Workspace <dir> -Outbox <
 
 ## 守候期限与续挂
 
-贡献者报告其 Claude Code 环境的后台命令约 30 分钟会被停止，所以默认 WATCH 命令每轮守 29 分钟（`min(29, TimeoutMinutes + 10)`；默认 `-TimeoutMinutes 90` 仍是 29）。这个期限不是所有版本的保证。退出码 2 而执行者进程还活着，可再挂一轮；续挂需要 Claude 处理通知并调用工具，会使用正常会话用量。
+默认 WATCH 命令一轮守满执行者的整个时限（`TimeoutMinutes + 10`）；执行者进程一结束，守候也立刻退出，不会空守。早期 Claude Code 版本的后台命令约 30 分钟会被停止，贡献者 2026-10 中旬起实测已没有这个上限（交卷守候挂 720 分钟、信箱守候挂 7 天都由脚本自己到点退出）。你的版本若仍会提前停掉后台命令，派单时加 `-WatchMinutes 29`。退出码 2 而执行者进程还活着，可再挂一轮；续挂需要 Claude 处理通知并调用工具，会使用正常会话用量。
 
 在 Windows 上，派单用外壳启动执行进程，不继承派单命令的输出管道。否则宿主会一直等到执行者退出，才把派单结果还给你。
 
 执行进程结束时会原子写入 `jobs/<id>/terminal.json`（先写临时文件再改名）。默认 WATCH 不把它当终态标记，进程消失仍是退出码 4。需要把它当成执行者自己的结束标记时，把该路径传给 `-TerminalFiles`。
 
-`Pending.ps1` 重挂时使用该任务记录里的 `watch_minutes`，旧记录没有这个字段时用 29。不再跟进的任务，在 `jobs/<id>/CLOSED.txt` 放任意内容，Pending 会跳过。
+`Pending.ps1` 重挂时使用该任务记录里的 `watch_minutes`，旧记录没有这个字段时用 720。不再跟进的任务，在 `jobs/<id>/CLOSED.txt` 放任意内容，Pending 会跳过。
 
 同时派了多单时，用 `bin/Wait-Many.ps1` 一个守候盯全部，任意一单交卷就叫醒你，避免一到点跳出一串超时通知。
 
@@ -107,7 +107,7 @@ Claude 守候脚本每次遇到终态就退出，不持久记录跨重挂的已�
 在 PowerShell 会话中传入真正的数组，例如：
 
 ```powershell
-& './bin/Wait-Many.ps1' -Outbox @('./example/outbox-a', './example/outbox-b') -ProcessId @(111, 222) -TimeoutMinutes 29
+& './bin/Wait-Many.ps1' -Outbox @('./example/outbox-a', './example/outbox-b') -ProcessId @(111, 222) -TimeoutMinutes 720
 ```
 
 替换示例目录和 PID；需要放进后台工具命令时，用 `pwsh -Command` 执行以上 PowerShell 表达式。`pwsh -File` 的参数传递不能把逗号分隔的命令行字符串绑定成数组。
@@ -143,6 +143,8 @@ pwsh -NoProfile -File ./tests/Smoke.ps1
 | DeepSeek DSH | — | DSH 默认设置 | 通过 | 4 秒 |
 
 贡献者报告的测试任务：读任务卡 → 写一行中文 REPORT.md → 写 READY.json；五个并行派出，守候脚本全部以退出码 0 通知原会话。这是其环境中的简单交付结果，不保证当前 CLI 版本、其他平台或复杂任务的质量。
+
+此后贡献者把这套当日常主力：2026-09-30 到 2026-11-03，一个 Claude Code Lead 派出 1500 多张任务卡，执行者以 Cursor CLI 和 Codex CLI 为主，单张从几分钟到六小时不等，常见同时在跑 3～6 张。
 
 ## License
 

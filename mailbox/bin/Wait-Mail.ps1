@@ -1,12 +1,12 @@
 # 守着自己的收件箱，一来新信就退出（用来叫醒挂它的会话）。只看文件，不调模型，也不把信移走。
 # 退出码：0 有未读信，2 超时没信。
-# 用法：pwsh -NoProfile -File Wait-Mail.ps1 -Root <dir> -Parties a,b -Me a [-TimeoutMinutes 29] [-IntervalSeconds 15]
+# 用法：pwsh -NoProfile -File Wait-Mail.ps1 -Root <dir> -Parties a,b -Me a [-TimeoutMinutes 10080] [-IntervalSeconds 15]
 param(
     [string]$Root = '',
     [string]$Parties = '',
     [string]$PartiesFile = '',
     [Parameter(Mandatory = $true)][string]$Me,
-    [double]$TimeoutMinutes = 29,
+    [double]$TimeoutMinutes = 10080,
     [int]$IntervalSeconds = 15
 )
 

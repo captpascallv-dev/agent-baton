@@ -2,14 +2,14 @@
 # 一个守候盯多单：任意一单交卷或执行者结束就退出（叫醒 Lead），其余的再挂一轮即可。
 #
 # In a PowerShell session (or a pwsh -Command script block), pass actual arrays:
-#   & ./Wait-Many.ps1 -Outbox @('<dirA>', '<dirB>') -ProcessId @(111, 222) -TimeoutMinutes 29
+#   & ./Wait-Many.ps1 -Outbox @('<dirA>', '<dirB>') -ProcessId @(111, 222) -TimeoutMinutes 720
 # pwsh -File cannot bind an array parameter from comma-separated command-line strings.
 #
 # Exit codes: 0 some READY.json appeared, 4 some executor process is gone without READY, 2 timed out.
 param(
     [Parameter(Mandatory = $true)][string[]]$Outbox,
     [int[]]$ProcessId = @(),          # same order as -Outbox; 0 or omitted = don't watch that process
-    [double]$TimeoutMinutes = 29,
+    [double]$TimeoutMinutes = 720,
     [int]$IntervalSeconds = 20
 )
 $ErrorActionPreference = 'Stop'

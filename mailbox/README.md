@@ -74,7 +74,7 @@ needs_reply:
 
 `Read-Mail.ps1` 只读收件箱目录这一层的 `.md`，读完移到 `to-<名字>\read\`。`-Peek` 只看不移。没有未读信时打印 `NO-MAIL`，退出码 0。
 
-`Wait-Mail.ps1` 看到未读信就退出码 0，到点还没有就退出码 2。它不把信移走。默认每轮 29 分钟、每 15 秒看一次，和 Claude 侧守候的习惯对齐；这个期限取决于你自己的后台命令限制。
+`Wait-Mail.ps1` 看到未读信就退出码 0，到点还没有就退出码 2。它不把信移走。默认一轮 7 天（10080 分钟）、每 15 秒看一次：长挂着，有信才叫醒。你的 Claude Code 版本若仍会提前停掉后台命令，传 `-TimeoutMinutes 29`，退出码 2 时再挂一轮。
 
 ## 用法
 
@@ -82,7 +82,7 @@ needs_reply:
 pwsh -NoProfile -File mailbox/bin/Send-Mail.ps1 -Root D:\mail -Parties alpha,beta `
   -From alpha -Subject "进度" -Body "卡片写好了。" -Thread demo -NeedsReply
 
-pwsh -NoProfile -File mailbox/bin/Wait-Mail.ps1 -Root D:\mail -Parties alpha,beta -Me beta -TimeoutMinutes 29
+pwsh -NoProfile -File mailbox/bin/Wait-Mail.ps1 -Root D:\mail -Parties alpha,beta -Me beta -TimeoutMinutes 10080
 
 pwsh -NoProfile -File mailbox/bin/Read-Mail.ps1 -Root D:\mail -Parties alpha,beta -Me beta
 ```

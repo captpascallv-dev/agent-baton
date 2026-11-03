@@ -16,6 +16,8 @@ param(
     [ValidatePattern('^$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')][string]$ResumeSessionId = '',
     [string]$ResumeSessionPath = '',
     [int]$TimeoutMinutes = 90,
+    # 0 = TimeoutMinutes + 10. Set e.g. 29 only if your Claude Code version still stops background commands early.
+    [int]$WatchMinutes = 0,
     [string]$Config = '',
     [switch]$DryRun
 )
@@ -66,9 +68,8 @@ New-Item -ItemType Directory -Force $Outbox | Out-Null
 $Outbox = (Resolve-Path -LiteralPath $Outbox).Path
 if (-not $JobId) { $JobId = [guid]::NewGuid().ToString('D') }
 $jobDir = Join-Path $root "jobs/$JobId"
-# Default 90 still watches 29 minutes: min(29, TimeoutMinutes + 10). Shorter tasks do not keep a 29-minute watch.
-$watchMinutes = 29
-if ($TimeoutMinutes -lt 19) { $watchMinutes = $TimeoutMinutes + 10 }
+# One watch covers the executor's whole timeout; the watcher also exits as soon as the executor process ends.
+$watchMinutes = if ($WatchMinutes -gt 0) { $WatchMinutes } else { $TimeoutMinutes + 10 }
 
 $tokens = @{
     '{workspace}' = $Workspace; '{outbox}' = $Outbox; '{card}' = $PromptFile
@@ -124,4 +125,4 @@ if ($null -eq $proc) { throw 'Executor wrapper process did not start.' }
 
 "DISPATCHED JobId=$JobId executor=$Executor pid=$($proc.Id)"
 "WATCH: pwsh -NoProfile -File `"$PSScriptRoot/Wait-Delivery.ps1`" -JobDir `"$Outbox`" -ProcessId $($proc.Id) -TimeoutMinutes $watchMinutes -IntervalSeconds 20"
-"NOTE: The 29-min watcher default is based on a contributor-reported ~30-min Claude Code background limit; verify your version. If the watcher exits with code 2 while pid is alive, re-arm WATCH."
+"NOTE: Run WATCH as a background command, then end the turn. Exit 2 (timeout) while pid is alive: re-arm WATCH."
