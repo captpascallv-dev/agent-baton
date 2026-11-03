@@ -1,10 +1,16 @@
 # agent-baton
 
-**让一个 Lead agent 指挥一群 agent CLI：派活、等交卷、Lead 之间商量，全在本地完成，等待期间不花模型额度。**
+**一个人 + 一群 agent 的完整工作流：一个 Lead 写卡、派活、验收，一群 agent CLI 并行干活，本地程序负责等和叫醒，人只定方向、批对外动作。**
 
-> agent-baton is a local-first toolkit for running a team of coding agents. A "lead" agent (Claude Code or Codex App) plans, dispatches task cards to cheaper agent CLIs, and reviews the results. Local programs do the waiting and wake the lead's original conversation when work is delivered; leads can also talk to each other through file mailboxes. No relay model, no polling by the model.
+> agent-baton is the complete, local-first workflow we use every day to run a team of coding agents: one strong "lead" agent (Claude Code or Codex App) writes task cards, dispatches them to cheaper agent CLIs and reviews the results; local programs do the dispatching, the waiting and the waking, so no model ever polls; a studio, an execution window and a quota HUD make the whole team visible; guards keep a dozen parallel test runs from taking the machine down. The method is written down in [`method/`](method/).
 
-名字取自两种"棒"：指挥手里的指挥棒（Lead 负责指挥），接力赛里的接力棒（任务在 agent 之间交出、交回）。本仓库原名 `agent-lead-wake`，旧链接会自动跳转。
+名字取自两种"棒"：指挥手里的指挥棒（Lead 负责指挥），接力赛里的接力棒（任务在 agent 之间交出、交回）。本仓库原名 `agent-lead-wake`，旧链接会自动跳转；原来单独发布的 [ai-moe-studio](https://github.com/captpascallv-dev/ai-moe-studio)（研究室）和 [codex-usage-hud](https://github.com/captpascallv-dev/codex-usage-hud)（额度 HUD）已连同完整历史并进来，分别在 [`studio/`](studio/) 和 [`hud/`](hud/)。
+
+## 这是一套什么样的工作流
+
+我们的日常是这样的：人说清想要什么，就去忙别的；一个判断力强的模型当 Lead，读现状、拆成一张张任务卡，派给几个便宜、额度多的 agent CLI 同时干；执行者干完写一个 `READY.json`，本地守候看到就把 Lead 叫醒；Lead 读产物、抽查、跑测试，合格的合并，不合格的写退修卡，然后当场派下一批。人回来时看到的是一份讲清进展、量级和待决事项的汇总，需要他点头的只有推送、发布、花钱、永久删除、改凭据这几类。
+
+这套做法我们连续用了几个月：一个 Claude Code Lead 在五周里派出 1500 多张任务卡，常见同时在跑 3～6 张；一个晚上并行推一批代码卡，Lead 只用掉一周额度的几个百分点。分工、写卡、验收、汇报、换会话的具体做法见 [`method/`](method/)。
 
 ---
 
@@ -20,15 +26,45 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 
 ---
 
-## 五个部分
+## 仓库里有什么
+
+**方法**
+
+| 目录 | 干什么 |
+| --- | --- |
+| [`method/`](method/) | **这套工作流怎么用**：谁做什么、一张卡的六步、验收的坑、怎么向人汇报、额度怎么排、换会话怎么交接、护栏，以及验收模板 |
+
+**核心链路：派活、等待、叫醒、商量**
 
 | 目录 | 干什么 | 适用 |
 | --- | --- | --- |
 | [`claude/`](claude/) | **派活 + 叫醒（Claude 侧）**：Claude Code 当 Lead，把任务卡派给任意 agent CLI；执行者最后写 `READY.json`，后台守候退出，原会话被叫醒 | Claude Code（CLI / 桌面版） |
 | [`codex/`](codex/) | **叫醒（Codex 侧）**：`codex-mail-wake` 插件，执行者交卷时把通知投回 Codex App 的原 Lead 会话 | Codex App（桌面版） |
 | [`mailbox/`](mailbox/) | **Lead 之间的信箱**：一封信就是一个 Markdown 文件，支持线程、回复和"需要回复"标记；本地守着来信，有信就叫醒 | 两个或多个 Lead 会话 |
-| [`acp/`](acp/) | **统一插头**：通用 ACP（Agent Client Protocol）客户端，驱动任何支持 ACP 的执行者；模型和档位只在对方支持时设置并回读，权限请求默认拒绝并逐条留痕 | 提供 ACP stdio 的 agent |
+
+**看得见：谁在干活、额度还剩多少**
+
+| 目录 | 干什么 | 适用 |
+| --- | --- | --- |
+| [`studio/`](studio/) | **研究室**：把本机的 Claude、Codex、执行者画成一间房里的 AI 娘，谁在干活、谁睡着一眼看见；自带演示模式 | 浏览器（Node.js） |
 | [`watch/`](watch/) | **执行观察窗**：只读查看本机 CLI 进程、派单记录和交卷状态；未知如实显示，结束任务留在历史 | Windows x64（[成品下载](https://github.com/captpascallv-dev/agent-baton/releases/tag/watch-v0.1.0)） |
+| [`hud/`](hud/) | **额度 HUD**：桌面悬浮面板，显示各家订阅剩余额度和重置时间，并写出一份额度快照给 Lead 派活前读 | Windows 10/11 x64（[成品下载](https://github.com/captpascallv-dev/codex-usage-hud/releases/latest)） |
+
+**护栏和小工具**
+
+| 目录 | 干什么 |
+| --- | --- |
+| [`guards/`](guards/) | **内存护栏**：测试和构建套 Windows Job 内存上限，再加一个钩子拦住没套上限的测试命令，一群 agent 同时跑测试也不会把整机拖垮 |
+| [`tools/`](tools/) | `quota_pace.py` 读额度快照算各家消耗进度；`extract_dialogue.py` 把旧会话提成对话正文，换新会话时交接用 |
+
+**可选接入**
+
+| 目录 | 干什么 |
+| --- | --- |
+| [`acp/`](acp/) | 通用 ACP（Agent Client Protocol）客户端，驱动任何支持 ACP 的执行者；权限请求默认拒绝并逐条留痕 |
+| [`docs/grokbot.md`](docs/grokbot.md) | 怎么用官方 BDK 扩展把一群 Grok Bot 当执行者（不带调用代码） |
+
+公司事实（项目、成员、决定、待办）我们放在另一个开源项目 [Onestead](https://github.com/captpascallv-dev/onestead)，任何 agent 接进来就能读到全部项目现状。两者可以分开用。
 
 ### 怎么组合
 
@@ -36,12 +72,12 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
               ┌──────────── mailbox/ ────────────┐
               │   Lead A ⇄ Lead B：商量、交接、回执   │
               └──────────────────────────────────┘
- Lead（Claude Code / Codex App）
-   │  写任务卡
+ Lead（Claude Code / Codex App）  ◀── 派活前读额度快照 ── hud/ + tools/quota_pace.py
+   │  写任务卡（method/）
    ▼
  claude/ Dispatch.ps1 ──启动──▶ 执行者（Codex CLI / Cursor / Grok Build / PI / 任何 ACP agent …）
-   │                                   │
-   └────────── watch/ 只读观察 ◀─────────┘
+   │                                   │  测试、构建套 guards/ 内存上限
+   └──── watch/ 观察窗、studio/ 研究室 ◀──┘
    ▲                                   │ 干活，最后写 READY.json
    │                                   ▼
    └── 叫醒原会话 ◀── claude/ 守候 或 codex/ 插件（只看文件，不调模型）
@@ -54,6 +90,16 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 - **想让一群 Grok Bot 当执行者**：见 [docs/grokbot.md](docs/grokbot.md)。本仓库不带调用代码，只讲清怎么用官方 BDK 扩展接入、要加哪层约定、踩过哪些坑。
 
 ---
+
+## 从零用起来（Claude Code 当 Lead，Windows）
+
+1. 读一遍 [`method/README.md`](method/README.md)，十分钟，知道每个角色做什么。
+2. 把 [`claude/CLAUDE.snippet.md`](claude/CLAUDE.snippet.md) 放进你的 `CLAUDE.md`，路径改成本仓库位置；复制 `claude/executors.example.json` 为 `claude/executors.json`，只留你装了的 CLI，核对模型和权限参数。
+3. 装内存护栏钩子（[`guards/README.md`](guards/README.md)），`pip install pywin32`。
+4. 可选：装 [`hud/`](hud/) 看额度、开 [`studio/`](studio/) 的演示模式看看研究室（`npm --prefix studio install`，再 `npm --prefix studio run demo`）。
+5. 对 Lead 说“调用外部执行，帮我做 XXX”。它会写卡、派单、挂守候，然后结束这一轮；执行者交卷时它自己醒来验收。
+
+下面是各部分的单独用法。
 
 ## 快速开始
 
@@ -90,7 +136,7 @@ $env:AGENT_MAILBOX_ROOT = 'D:\work\mailbox'   # 信箱根目录；也可以每�
 pwsh -NoProfile -File mailbox/bin/Send-Mail.ps1 -From alpha -Subject "接口改好了" -BodyFile note.md -Thread api-v2 -NeedsReply
 
 # 守候：有信退出码 0（叫醒），到点退出码 2（再挂一轮）
-pwsh -NoProfile -File mailbox/bin/Wait-Mail.ps1 -Me beta -TimeoutMinutes 29
+pwsh -NoProfile -File mailbox/bin/Wait-Mail.ps1 -Me beta -TimeoutMinutes 10080
 
 # 读信并归档到 read\
 pwsh -NoProfile -File mailbox/bin/Read-Mail.ps1 -Me beta
@@ -121,7 +167,7 @@ python acp/acp_client.py --agent <支持 ACP 的命令> --agent-arg <参数> `
 | PI | gpt-6-luna / max | 19 秒 |
 | DeepSeek DSH | 默认 | 4 秒 |
 
-测试任务只是"读卡、写一行报告、写 READY.json"，五个执行者并行派出，全部自动叫醒，只证明链路是通的。真实使用中，这套做法跑过数小时的多执行者并行开发，Lead 全程不轮询。
+测试任务只是"读卡、写一行报告、写 READY.json"，五个执行者并行派出，全部自动叫醒，只证明链路是通的。真实使用中，2026-09-30 到 2026-11-03 一个 Claude Code Lead 派出 1500 多张任务卡，执行者以 Cursor CLI 和 Codex CLI 为主，单张从几分钟到六小时，Lead 全程不轮询。
 
 ---
 
@@ -158,7 +204,10 @@ node codex/tools/check-public.mjs
 pwsh -NoProfile -File claude/tests/Smoke.ps1
 pwsh -NoProfile -File mailbox/tests/Smoke.ps1
 python acp/tests/smoke.py
+npm --prefix studio ci; npm --prefix studio run test:live
 ```
+
+`hud/` 和 `watch/` 一样需要 Windows 和 .NET SDK：`pwsh -NoProfile -File hud/scripts/test.ps1`。
 
 `watch/` 另需 Windows 和 .NET 8 SDK，构建后运行自己的测试与公开目录检查：
 
@@ -177,5 +226,11 @@ pwsh -NoProfile -File watch/tests/Smoke.ps1
 
 ## License
 
-- `claude/`、`codex/`、`mailbox/`、`acp/` 及根文档：[MIT](LICENSE)。
+- `claude/`、`codex/`、`mailbox/`、`acp/`、`guards/`、`tools/`、`method/` 及根文档：[MIT](LICENSE)。
 - `watch/`：[MPL-2.0](watch/LICENSE)，来源与第三方声明见 [watch/NOTICE.txt](watch/NOTICE.txt)。
+- `studio/`：代码 [MIT](studio/LICENSE)；角色与场景素材 CC BY-NC-SA 4.0，仅限非商业使用，原设计署名见 [studio/CREDITS.md](studio/CREDITS.md) 和 [studio/ASSETS-LICENSE.md](studio/ASSETS-LICENSE.md)。
+- `hud/`：[MIT](hud/LICENSE)，第三方声明见 [hud/THIRD_PARTY_NOTICES.md](hud/THIRD_PARTY_NOTICES.md)。
+
+## 致谢
+
+“合并前只读交叉审查”和“定了不做的事”两条做法，参考了数字生命卡兹克公开分享的 Agent 自动化系统。
