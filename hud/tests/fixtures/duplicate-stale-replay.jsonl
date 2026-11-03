@@ -1,0 +1,6 @@
+{"type":"session_meta","payload":{"id":"thread-fixture-b"}}
+{"type":"turn_context","payload":{"thread_id":"thread-fixture-b","model":"gpt-5","turn_id":"turn-1"}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"thread-fixture-b","timestamp":1700000100,"info":{"total_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120},"last_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120}}}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"thread-fixture-b","timestamp":1700000110,"info":{"total_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120},"last_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120}}}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"thread-fixture-b","timestamp":1700000200,"info":{"total_token_usage":{"input_tokens":140,"output_tokens":30,"total_tokens":170},"last_token_usage":{"input_tokens":40,"output_tokens":10,"total_tokens":50}}}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"thread-fixture-b","timestamp":1700000300,"info":{"total_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120},"last_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120}}}}

@@ -1,0 +1,2 @@
+{"type":"turn_context","payload":{"thread_id":"alias","turn_id":"one","turn_key":"two"}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"alias-valid","timestamp":1700200000,"info":{"total_token_usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2},"last_token_usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2},"context_window":128000}}}

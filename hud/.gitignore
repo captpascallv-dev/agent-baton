@@ -1,0 +1,23 @@
+.tools/
+.artifacts/
+dist/
+bin/
+obj/
+*.user
+*.suo
+usage.db
+usage.db-shm
+usage.db-wal
+
+# Local implementation authority and private acceptance history.
+# These files remain on the maintainer machine but are not part of the public repository.
+/AGENTS.md
+/IMPLEMENTATION_PLAN.md
+/RUN_CARD_*.md
+/design-qa.md
+/docs/*
+!/docs/TECHNICAL_SPEC.md
+!/docs/PACKAGE_ACCEPTANCE.md
+!/docs/CONTEXT_CONTINUATION_V3_PLAN.md
+!/docs/images/
+!/docs/images/**

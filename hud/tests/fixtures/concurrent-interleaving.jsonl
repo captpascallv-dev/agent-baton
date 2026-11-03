@@ -1,0 +1,7 @@
+{"type":"session_meta","payload":{"id":"thread-interleaved"}}
+{"type":"event_msg","payload":{"type":"task_started","thread_id":"thread-interleaved","timestamp":1700001000}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"thread-interleaved","timestamp":1700001001,"info":{"total_token_usage":{"input_tokens":80,"output_tokens":20,"total_tokens":100},"last_token_usage":{"input_tokens":80,"output_tokens":20,"total_tokens":100},"context_window":128000}}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"thread-interleaved","timestamp":1700001002,"info":{"total_token_usage":{"input_tokens":180,"output_tokens":40,"total_tokens":220},"last_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120},"context_window":128000}}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"thread-interleaved","timestamp":1700001003,"info":{"total_token_usage":{"input_tokens":120,"output_tokens":30,"total_tokens":150},"last_token_usage":{"input_tokens":40,"output_tokens":10,"total_tokens":50},"context_window":128000}}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"thread-interleaved","timestamp":1700001004,"info":{"total_token_usage":{"input_tokens":210,"output_tokens":50,"total_tokens":260},"last_token_usage":{"input_tokens":30,"output_tokens":10,"total_tokens":40},"context_window":128000}}}
+{"type":"event_msg","payload":{"type":"task_complete","thread_id":"thread-interleaved","timestamp":1700001005}}

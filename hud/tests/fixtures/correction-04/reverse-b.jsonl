@@ -1,0 +1,3 @@
+{"type":"turn_context","payload":{"thread_id":"thread-r3-oracle","turn_id":"turn-b","timestamp":1700202010}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"thread-r3-oracle","timestamp":1700202011,"info":{"total_token_usage":{"input_tokens":5,"output_tokens":1,"total_tokens":6},"last_token_usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4},"context_window":128000}}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"thread-r3-oracle","timestamp":1700202011,"info":{"total_token_usage":{"input_tokens":8,"output_tokens":2,"total_tokens":10},"last_token_usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4},"context_window":128000}}}

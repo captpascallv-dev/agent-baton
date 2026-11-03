@@ -1,0 +1,2 @@
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"alias","info":{"total_token_usage":{},"last_token_usage":{},"context_window":128000,"model_context_window_size":256000}}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"alias-valid","timestamp":1700200000,"info":{"total_token_usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2},"last_token_usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2},"context_window":128000}}}

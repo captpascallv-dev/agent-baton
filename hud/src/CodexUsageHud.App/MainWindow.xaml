@@ -1,0 +1,930 @@
+<Window x:Class="CodexUsageHud.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CodexUsageHud.App"
+        Title="Codex Usage HUD" Language="zh-CN"
+        Width="224" Height="324" MinWidth="8" MinHeight="8"
+        WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="False"
+        Background="{StaticResource HudBackground}" Foreground="{StaticResource HudText}"
+        FontFamily="{StaticResource HudFont}" FontSize="14"
+        ShowInTaskbar="False" Topmost="False" WindowStartupLocation="Manual"
+        UseLayoutRounding="True" SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType"
+        TextOptions.TextHintingMode="Fixed">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolVisibility" />
+        <local:CompactTokenConverter x:Key="CompactToken" />
+        <local:SlotSelectedConverter x:Key="SlotSelected" />
+        <Style x:Key="HudButton" TargetType="Button">
+            <Setter Property="Height" Value="38" />
+            <Setter Property="MinWidth" Value="38" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="FontFamily" Value="{StaticResource HudFont}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="{StaticResource HudText}" />
+            <Setter Property="Background" Value="{StaticResource HudPanel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource HudLine}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" RecognizesAccessKey="True"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource HudHover}" />
+                    <Setter Property="BorderBrush" Value="#FF9AB5A4" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="{StaticResource HudSelectedStrong}" />
+                </Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource HudMint}" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.48" /></Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource HudButton}">
+            <Setter Property="Background" Value="{StaticResource HudMint}" />
+            <Setter Property="BorderBrush" Value="{StaticResource HudMint}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" RecognizesAccessKey="True"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="White" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#FF105A3F" /></Trigger>
+                <Trigger Property="IsPressed" Value="True"><Setter Property="Background" Value="#FF0B4933" /></Trigger>
+            </Style.Triggers>
+        </Style>
+        <DataTemplate x:Key="ProviderMark">
+            <Viewbox Stretch="Uniform">
+                <Grid Width="34" Height="34">
+                    <Border x:Name="CodexPrimaryMark" CornerRadius="8" Background="{StaticResource HudMarkCodexPrimary}">
+                        <TextBlock Text="C" FontSize="16" FontWeight="Bold" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <Border x:Name="CodexSecondaryMark" CornerRadius="8" Background="White"
+                            BorderBrush="{StaticResource HudMarkCodexPrimary}" BorderThickness="2" Visibility="Collapsed">
+                        <TextBlock Text="C" FontSize="16" FontWeight="Bold" Foreground="{StaticResource HudMarkCodexPrimary}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <Border x:Name="CursorMark" CornerRadius="8" Background="{StaticResource HudMarkCursor}" Visibility="Collapsed">
+                        <Viewbox Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path Fill="White" Data="M3,2 L3,26 L9,20 L13,30 L16.5,28.5 L12,18 L21,18 Z" />
+                        </Viewbox>
+                    </Border>
+                    <Border x:Name="GrokMark" CornerRadius="8" Background="{StaticResource HudMarkGrok}" Visibility="Collapsed">
+                        <TextBlock Text="X" FontSize="16" FontWeight="Bold" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <Border x:Name="BotMark" CornerRadius="8" Background="{StaticResource HudMarkGrok}" Visibility="Collapsed">
+                        <Grid>
+                            <TextBlock Text="X" FontSize="13" FontWeight="Bold" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,3,0,0" />
+                            <TextBlock Text="BOT" FontSize="7" FontWeight="SemiBold" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,3" />
+                        </Grid>
+                    </Border>
+                    <Border x:Name="ClaudeMark" CornerRadius="8" Background="{StaticResource HudMarkClaude}" Visibility="Collapsed">
+                        <TextBlock Text="CL" FontSize="13" FontWeight="Bold" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Viewbox>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding SlotId}" Value="codex-secondary">
+                    <Setter TargetName="CodexPrimaryMark" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="CodexSecondaryMark" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding SlotId}" Value="cursor">
+                    <Setter TargetName="CodexPrimaryMark" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="CursorMark" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding SlotId}" Value="grok">
+                    <Setter TargetName="CodexPrimaryMark" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="GrokMark" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding SlotId}" Value="grok-bot">
+                    <Setter TargetName="CodexPrimaryMark" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="BotMark" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding SlotId}" Value="claude">
+                    <Setter TargetName="CodexPrimaryMark" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="ClaudeMark" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+        <Style x:Key="NavRadio" TargetType="RadioButton">
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="{StaticResource HudText}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid Background="Transparent">
+                            <Border x:Name="Chrome" Background="Transparent" CornerRadius="7" Margin="0,0,0,4"
+                                    BorderThickness="1" BorderBrush="Transparent">
+                                <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center" />
+                            </Border>
+                            <Border x:Name="Indicator" Height="3" CornerRadius="1.5" Margin="7,0"
+                                    VerticalAlignment="Bottom" Background="{StaticResource HudMint}" Visibility="Collapsed" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{StaticResource HudHover}" /></Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource HudSelected}" />
+                                <Setter TargetName="Indicator" Property="Visibility" Value="Visible" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource HudMint}" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Caption" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource HudFont}" />
+            <Setter Property="FontSize" Value="{DynamicResource HudCaptionFontSize}" />
+            <Setter Property="Foreground" Value="{StaticResource HudMuted}" />
+        </Style>
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource HudFont}" />
+            <Setter Property="FontSize" Value="{DynamicResource HudSectionFontSize}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource HudText}" />
+        </Style>
+        <Style x:Key="UsageNumber" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontSize" Value="{DynamicResource HudNumberFontSize}" />
+            <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="TextAlignment" Value="Right" />
+            <Setter Property="Margin" Value="12,0,0,0" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="QuietProgress" TargetType="ProgressBar">
+            <Setter Property="Height" Value="6" />
+            <Setter Property="Maximum" Value="100" />
+            <Setter Property="Foreground" Value="{StaticResource HudMint}" />
+            <Setter Property="Background" Value="{StaticResource HudProgressTrack}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Grid x:Name="PART_Track" Background="Transparent">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="3" />
+                            <Border x:Name="PART_Indicator" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}" CornerRadius="3" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Disclosure" TargetType="Expander">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{StaticResource HudText}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Expander">
+                        <StackPanel>
+                            <ToggleButton x:Name="HeaderButton" MinHeight="42" HorizontalContentAlignment="Stretch"
+                                          Cursor="Hand" Foreground="{TemplateBinding Foreground}"
+                                          IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="Hover" CornerRadius="6" Background="Transparent" Padding="0,5" BorderThickness="1" BorderBrush="Transparent">
+                                            <Grid>
+                                                <ContentPresenter Content="{TemplateBinding Content}" Margin="0,0,25,0" VerticalAlignment="Center" />
+                                                <TextBlock x:Name="Arrow" Text="&#xE76C;" FontFamily="{StaticResource HudIconFont}"
+                                                           FontSize="13" HorizontalAlignment="Right" Margin="0,0,4,0" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True"><Setter TargetName="Arrow" Property="Text" Value="&#xE70D;" /></Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Hover" Property="Background" Value="{StaticResource HudHover}" /></Trigger>
+                                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Hover" Property="BorderBrush" Value="{StaticResource HudMint}" /></Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                                <ContentPresenter Content="{TemplateBinding Header}" ContentTemplate="{TemplateBinding HeaderTemplate}" />
+                            </ToggleButton>
+                            <ContentPresenter x:Name="ExpandedContent" ContentSource="Content" Visibility="Collapsed" Margin="0,8,0,6" />
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="True"><Setter TargetName="ExpandedContent" Property="Visibility" Value="Visible" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="WindowRoot" MouseLeftButtonDown="OnDrag">
+        <Border x:Name="ExpandedShell" Visibility="Collapsed" Background="{StaticResource HudBackground}"
+                BorderBrush="{StaticResource HudLine}" BorderThickness="1" CornerRadius="15">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="62" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="44" />
+                </Grid.RowDefinitions>
+                <Grid Margin="24,0,18,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="&#xE9D2;" FontFamily="{StaticResource HudIconFont}" FontSize="26" Foreground="{StaticResource HudMint}" Margin="0,0,12,0" />
+                        <TextBlock Text="Codex Usage HUD" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="RefreshButton" Style="{StaticResource IconButtonStyle}" Content="&#xE72C;" ToolTip="刷新额度与本地索引" AutomationProperties.Name="刷新" Click="OnRefresh" />
+                        <Button x:Name="PanelSettingsButton" Style="{StaticResource IconButtonStyle}" Content="&#xE713;" ToolTip="设置" AutomationProperties.Name="设置" Click="OnSettings" />
+                        <Button x:Name="PanelTopmostButton" Style="{StaticResource IconButtonStyle}" Content="&#xE718;" ToolTip="窗口始终置顶" AutomationProperties.Name="窗口置顶" Click="OnToggleTopmost" PreviewMouseLeftButtonDown="OnTopmostPointerDown" />
+                        <Button x:Name="FullscreenButton" Style="{StaticResource IconButtonStyle}" Content="&#xE740;" ToolTip="全屏" AutomationProperties.Name="全屏" Click="OnToggleFullscreen" />
+                        <Button x:Name="CollapseButton" Style="{StaticResource IconButtonStyle}" Content="&#xE76B;" ToolTip="收起到悬浮卡" AutomationProperties.Name="收起到悬浮卡" Click="OnToggleExpand" />
+                        <Button Style="{StaticResource IconButtonStyle}" Content="&#xE921;" ToolTip="最小化到托盘" AutomationProperties.Name="最小化到托盘" Click="OnMinimizeToTray" />
+                    </StackPanel>
+                </Grid>
+                <Border Grid.Row="1" Background="{StaticResource HudOverview}" CornerRadius="10" Margin="20,0,20,18" Padding="24,18,24,16">
+                    <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="22" /></Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="1.35*" /><ColumnDefinition Width="1.25*" /><ColumnDefinition Width="0.7*" /><ColumnDefinition Width="1.15*" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{Binding RemainingWindowText}" Style="{StaticResource Caption}" />
+                            <TextBlock x:Name="ExpandedRemainingText" Text="{Binding RemainingText}" FontSize="58" FontWeight="SemiBold" Foreground="{StaticResource HudMint}" Margin="0,0,0,1" />
+                            <StackPanel Orientation="Horizontal">
+                                <StackPanel Orientation="Horizontal">
+                                    <StackPanel.Style><Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding UsedText}" Value="不可用"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></StackPanel.Style>
+                                    <TextBlock Text="已用 " FontSize="13" Foreground="{StaticResource HudMuted}" />
+                                    <TextBlock Text="{Binding UsedText}" FontSize="13" Foreground="{StaticResource HudMuted}" />
+                                    <TextBlock Text=" · " FontSize="13" Foreground="{StaticResource HudMuted}" />
+                                </StackPanel>
+                                <TextBlock x:Name="ThresholdStateText" Text="{Binding QuotaStateText}" FontSize="13" Foreground="{StaticResource HudMint}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,12,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE823;" FontFamily="{StaticResource HudIconFont}" FontSize="15" Margin="0,1,8,0" Foreground="{StaticResource HudMuted}" />
+                                <TextBlock Text="距离重置" Style="{StaticResource Caption}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding CountdownText}" FontSize="22" FontWeight="SemiBold" Margin="0,12,0,5" TextTrimming="CharacterEllipsis" ToolTip="{Binding CountdownText}" />
+                            <TextBlock Text="{Binding ResetTimeText}" Style="{StaticResource Caption}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="8,10,0,0">
+                            <TextBlock Text="{Binding RunningCountText}" FontSize="34" FontWeight="SemiBold" />
+                            <TextBlock Text="运行中会话" Style="{StaticResource Caption}" Margin="0,5,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="14,10,0,0">
+                            <TextBlock Text="{Binding CycleCompactText}" FontSize="34" FontWeight="SemiBold" ToolTip="{Binding CycleTotalText}" />
+                            <TextBlock Text="本机本周期 · raw tokens" Style="{StaticResource Caption}" Margin="0,5,0,0" />
+                        </StackPanel>
+                        <ProgressBar x:Name="OverviewProgress" Grid.Row="1" Grid.ColumnSpan="2" Style="{StaticResource QuietProgress}"
+                                     Value="{Binding QuotaRingValue, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,24,0" />
+                        <TextBlock Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2" Text="{Binding QuotaSourceText}" Style="{StaticResource Caption}"
+                                   VerticalAlignment="Bottom" HorizontalAlignment="Right" ToolTip="{Binding FreshnessText}" />
+                    </Grid>
+                </Border>
+
+                <Grid Grid.Row="2" Margin="20,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition x:Name="DetailColumn" Width="404" /></Grid.ColumnDefinitions>
+                    <Border Background="{StaticResource HudPanel}" BorderBrush="{StaticResource HudLine}" BorderThickness="1" CornerRadius="10" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="28" /></Grid.RowDefinitions>
+                            <Grid Margin="10,10,10,4">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="144" /></Grid.ColumnDefinitions>
+                                <WrapPanel VerticalAlignment="Center">
+                                    <RadioButton x:Name="RecentNav" GroupName="SessionFilter" Tag="recent" Style="{StaticResource NavRadio}" IsChecked="True" Content="最近会话" Checked="OnFilterTabChecked" />
+                                    <RadioButton x:Name="RunningNav" GroupName="SessionFilter" Tag="running" Style="{StaticResource NavRadio}" Checked="OnFilterTabChecked">
+                                        <StackPanel Orientation="Horizontal"><TextBlock Text="运行中" /><TextBlock Text="{Binding AnalysisRunningCountText}" Margin="7,0,0,0" Foreground="{StaticResource HudMuted}" /></StackPanel>
+                                    </RadioButton>
+                                    <RadioButton x:Name="AllNav" GroupName="SessionFilter" Tag="all" Style="{StaticResource NavRadio}" Checked="OnFilterTabChecked">
+                                        <StackPanel Orientation="Horizontal"><TextBlock Text="全部" /><TextBlock Text="{Binding PrimarySessionCountText}" Margin="7,0,0,0" Foreground="{StaticResource HudMuted}" /></StackPanel>
+                                    </RadioButton>
+                                    <RadioButton x:Name="InternalNav" GroupName="SessionFilter" Tag="internal" Style="{StaticResource NavRadio}" ToolTip="没有可用父会话的历史子任务" Checked="OnFilterTabChecked">
+                                        <StackPanel Orientation="Horizontal"><TextBlock Text="未归属" /><TextBlock Text="{Binding OrphanTaskCountText}" Margin="7,0,0,0" Foreground="{StaticResource HudMuted}" /></StackPanel>
+                                    </RadioButton>
+                                </WrapPanel>
+                                <ComboBox x:Name="SortComboBox" Grid.Column="1" Margin="6,0,0,4" VerticalAlignment="Top"
+                                          SelectedIndex="0" ToolTip="置顶会话始终优先，其余按所选方式排列" AutomationProperties.Name="会话排序" SelectionChanged="OnSortChanged">
+                                    <ComboBoxItem Content="最近活动" Tag="activity" />
+                                    <ComboBoxItem Content="token 用量" Tag="tokens" />
+                                </ComboBox>
+                            </Grid>
+                            <DataGrid x:Name="SessionGrid" Grid.Row="1" ItemsSource="{Binding Rows}" MinRowHeight="76"
+                                      IsReadOnly="True" AutoGenerateColumns="False" SelectionMode="Single" SelectionUnit="FullRow"
+                                      CanUserAddRows="False" CanUserDeleteRows="False" CanUserResizeRows="False" CanUserReorderColumns="False"
+                                      CanUserSortColumns="False" CanUserResizeColumns="False" EnableRowVirtualization="True" EnableColumnVirtualization="True"
+                                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                                      VirtualizingPanel.ScrollUnit="Pixel" ScrollViewer.CanContentScroll="True"
+                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                      AutomationProperties.Name="会话列表">
+                                <DataGrid.Columns>
+                                    <DataGridTemplateColumn Header="会话" Width="*" MinWidth="180">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="10,11,14,11" ToolTip="{Binding ThreadId}">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="{Binding HierarchyIndent}" /><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="1" Text="&#xE718;" FontFamily="{StaticResource HudIconFont}" Foreground="{StaticResource HudMint}"
+                                                               Margin="0,3,5,0" Visibility="{Binding IsPinned, Converter={StaticResource BoolVisibility}}" />
+                                                    <TextBlock Grid.Column="1" Text="└" FontSize="20" Foreground="#FF9BAFA0"
+                                                               Visibility="{Binding IsInternalTask, Converter={StaticResource BoolVisibility}}" />
+                                                    <StackPanel Grid.Column="2">
+                                                        <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                                                        <TextBlock Style="{StaticResource Caption}" Margin="0,5,0,0" TextTrimming="CharacterEllipsis">
+                                                            <TextBlock.Text><MultiBinding StringFormat="{}{0} · {1} · {2}"><Binding Path="SourceLabel" /><Binding Path="Project" /><Binding Path="Model" /></MultiBinding></TextBlock.Text>
+                                                        </TextBlock>
+                                                        <Button Style="{StaticResource HudButton}" Height="27" Padding="0" Margin="0,4,0,0" Background="Transparent" BorderThickness="0"
+                                                                HorizontalAlignment="Left" Visibility="{Binding HasChildren, Converter={StaticResource BoolVisibility}}"
+                                                                Click="OnToggleSessionChildren" ToolTip="{Binding ChildSummaryText}" AutomationProperties.Name="展开或收起子任务">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="{Binding ChildSummaryText}" FontSize="13" Foreground="{StaticResource HudMuted}" />
+                                                                <TextBlock FontFamily="{StaticResource HudIconFont}" FontSize="11" Margin="8,2,0,0">
+                                                                    <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="&#xE76C;" /><Style.Triggers><DataTrigger Binding="{Binding IsExpanded}" Value="True"><Setter Property="Text" Value="&#xE70D;" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                                                                </TextBlock>
+                                                            </StackPanel>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="工作合计 · raw" Width="152">
+                                        <DataGridTemplateColumn.CellStyle><Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}"><Setter Property="AutomationProperties.Name" Value="{Binding WorkTotalText}" /></Style></DataGridTemplateColumn.CellStyle>
+                                        <DataGridTemplateColumn.HeaderStyle><Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}"><Setter Property="HorizontalContentAlignment" Value="Right" /><Setter Property="Padding" Value="0,0,14,0" /></Style></DataGridTemplateColumn.HeaderStyle>
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,8,14,8">
+                                                    <TextBlock Text="{Binding WorkTotal.Total, Converter={StaticResource CompactToken}}" FontSize="18" FontWeight="SemiBold"
+                                                               HorizontalAlignment="Right" MaxWidth="122" TextTrimming="CharacterEllipsis" ToolTip="{Binding WorkTotalText}" />
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+                                                        <Ellipse Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center">
+                                                            <Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Fill" Value="#FF829087" /><Style.Triggers><DataTrigger Binding="{Binding IsRunning}" Value="True"><Setter Property="Fill" Value="{StaticResource HudMint}" /></DataTrigger></Style.Triggers></Style></Ellipse.Style>
+                                                        </Ellipse>
+                                                        <TextBlock Text="{Binding Status}" FontSize="13" Foreground="{StaticResource HudMuted}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <TextBlock Grid.Row="2" Text="{Binding VisibleSessionCountText}" Style="{StaticResource Caption}" Margin="15,2,10,0" />
+                            <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Visibility="{Binding AnalysisEmptyVisible, Converter={StaticResource BoolVisibility}}">
+                                <TextBlock Text="{Binding AnalysisEmptyTitle}" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="420" />
+                                <TextBlock Text="{Binding AnalysisEmptyDetail}" Style="{StaticResource Caption}" Margin="0,10,0,12" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="460" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border x:Name="DetailPanel" Grid.Column="2" Background="{StaticResource HudPanel}" BorderBrush="{StaticResource HudLine}"
+                            BorderThickness="1" CornerRadius="10" Padding="20"
+                            DataContext="{Binding SelectedItem, ElementName=SessionGrid}">
+                        <Grid>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,4,0">
+                                <Grid x:Name="DetailContentGrid">
+                                    <Grid.Style><Style TargetType="Grid"><Style.Triggers><DataTrigger Binding="{Binding}" Value="{x:Null}"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></Grid.Style>
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"
+                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                                            <Button x:Name="SessionPinButton" Grid.Column="1" Height="34" Padding="9,0" Click="OnTogglePin" AutomationProperties.Name="置顶会话">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource HudButton}">
+                                                        <Setter Property="Content" Value="置顶" /><Setter Property="ToolTip" Value="置顶此会话；优先于当前排序" />
+                                                        <Style.Triggers><DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                                            <Setter Property="Content" Value="已置顶" /><Setter Property="Foreground" Value="{StaticResource HudMint}" />
+                                                            <Setter Property="BorderBrush" Value="{StaticResource HudMint}" /><Setter Property="Background" Value="{StaticResource HudSelected}" />
+                                                            <Setter Property="ToolTip" Value="取消会话置顶" />
+                                                        </DataTrigger></Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+                                        </Grid>
+                                        <TextBlock Margin="0,7,0,0" FontSize="13" TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Text><MultiBinding StringFormat="{}{0} · {1} · {2}"><Binding Path="SourceLabel" /><Binding Path="Model" /><Binding Path="Tier" /></MultiBinding></TextBlock.Text>
+                                        </TextBlock>
+                                        <TextBlock Style="{StaticResource Caption}" Margin="0,4,0,9" TextTrimming="CharacterEllipsis" ToolTip="{Binding ThreadId}">
+                                            <TextBlock.Text><MultiBinding StringFormat="{}{0}  ·  最近活动 {1}"><Binding Path="ShortId" /><Binding Path="LastActivity" /></MultiBinding></TextBlock.Text>
+                                        </TextBlock>
+
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="96" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="34" /><RowDefinition Height="32" /><RowDefinition Height="32" />
+                                                <RowDefinition Height="32" /><RowDefinition Height="32" /><RowDefinition Height="36" />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="用量明细" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="最近一轮" Style="{StaticResource Caption}" HorizontalAlignment="Right" VerticalAlignment="Center" ToolTip="{Binding RecentUsageLabel}" />
+                                            <TextBlock Grid.Column="2" Text="会话累计" Style="{StaticResource Caption}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                            <Border Grid.Row="1" Grid.ColumnSpan="3" BorderBrush="{StaticResource HudLine}" BorderThickness="0,1,0,0" />
+                                            <TextBlock Grid.Row="1" Text="原始输入" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding RecentUsage.RawInput, StringFormat={}{0:N0}}" Style="{StaticResource UsageNumber}" ToolTip="{Binding RecentUsage.RawInput}" />
+                                            <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding SessionTotal.RawInput, StringFormat={}{0:N0}}" Style="{StaticResource UsageNumber}" ToolTip="{Binding SessionTotal.RawInput}" />
+                                            <TextBlock Grid.Row="2" Text="缓存输入" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding RecentUsage.CachedInput, StringFormat={}{0:N0}}" Style="{StaticResource UsageNumber}" ToolTip="{Binding RecentUsage.CachedInput}" />
+                                            <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding SessionTotal.CachedInput, StringFormat={}{0:N0}}" Style="{StaticResource UsageNumber}" ToolTip="{Binding SessionTotal.CachedInput}" />
+                                            <TextBlock Grid.Row="3" Text="输出" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding RecentUsage.Output, StringFormat={}{0:N0}}" Style="{StaticResource UsageNumber}" ToolTip="{Binding RecentUsage.Output}" />
+                                            <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding SessionTotal.Output, StringFormat={}{0:N0}}" Style="{StaticResource UsageNumber}" ToolTip="{Binding SessionTotal.Output}" />
+                                            <TextBlock Grid.Row="4" Text="推理" VerticalAlignment="Center" ToolTip="推理 token 已包含在输出中，不再重复相加" />
+                                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding RecentUsage.Reasoning, StringFormat={}{0:N0}}" Style="{StaticResource UsageNumber}" ToolTip="{Binding RecentUsage.Reasoning}" />
+                                            <TextBlock Grid.Row="4" Grid.Column="2" Text="{Binding SessionTotal.Reasoning, StringFormat={}{0:N0}}" Style="{StaticResource UsageNumber}" ToolTip="{Binding SessionTotal.Reasoning}" />
+                                            <Border Grid.Row="5" Grid.ColumnSpan="3" BorderBrush="{StaticResource HudLine}" BorderThickness="0,1,0,0" />
+                                            <TextBlock Grid.Row="5" Text="合计" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding RecentUsage.Total, StringFormat={}{0:N0}}" Style="{StaticResource UsageNumber}" FontWeight="SemiBold" ToolTip="{Binding RecentUsage.Total}" />
+                                            <TextBlock Grid.Row="5" Grid.Column="2" Text="{Binding SessionTotal.Total, StringFormat={}{0:N0}}" Style="{StaticResource UsageNumber}" FontWeight="SemiBold" ToolTip="{Binding SessionTotal.Total}" />
+                                        </Grid>
+                                        <TextBlock Style="{StaticResource Caption}" ToolTip="{Binding RecentUsageConfidence}" Margin="0,0,0,10" TextWrapping="Wrap">
+                                            <Run Text="{Binding RecentUsageLabel, Mode=OneWay}" /><Run Text=" · 推理已计入输出" />
+                                        </TextBlock>
+                                        <Border Height="1" Background="{StaticResource HudLine}" />
+                                        <Grid Margin="0,9,0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="工作合计" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding WorkTotal.Total, Converter={StaticResource CompactToken}}" FontSize="22" FontWeight="SemiBold" ToolTip="{Binding WorkTotalText}" />
+                                        </Grid>
+                                        <TextBlock Text="{Binding WorkBreakdownText}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,10" />
+                                        <Border Height="1" Background="{StaticResource HudLine}" />
+                                        <Expander x:Name="ContinuationExpander" Style="{StaticResource Disclosure}" Margin="0,8,0,0" AutomationProperties.Name="续接参考详情">
+                                            <Expander.Header>
+                                                <StackPanel>
+                                                    <TextBlock Text="续接参考" Style="{StaticResource SectionTitle}" />
+                                                    <TextBlock FontSize="14" Margin="0,6,0,0" TextWrapping="Wrap">
+                                                        <Run Text="{Binding ContinuationGradeText, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="  " /><Run Text="{Binding ContinuationAdviceText, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                    <TextBlock FontSize="13" Foreground="{StaticResource HudMuted}" Margin="0,5,0,0">
+                                                        <Run Text="人工漂移：" /><Run Text="{Binding DriftAssessmentText, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Expander.Header>
+                                            <StackPanel>
+                                                <TextBlock Text="压缩后底座" Style="{StaticResource Caption}" />
+                                                <TextBlock Text="{Binding PostCompactionBaselineText}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                                <TextBlock Text="{Binding PostCompactionSourceText}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,4,0,12" />
+                                                <TextBlock Text="底座趋势" Style="{StaticResource Caption}" />
+                                                <TextBlock Text="{Binding BaselineTrendText}" TextWrapping="Wrap" Margin="0,4,0,12" />
+                                                <TextBlock Text="间隔续航" Style="{StaticResource Caption}" />
+                                                <TextBlock Text="{Binding EffectiveRunwayText}" TextWrapping="Wrap" Margin="0,4,0,12"
+                                                           ToolTip="两次可比压缩边界之间观测到的回合与 raw token 处理量，不是上下文容量或平台额度" />
+                                                <TextBlock Text="结构承载" Style="{StaticResource Caption}" />
+                                                <TextBlock Text="{Binding StructuralGradeText}" FontSize="16" FontWeight="SemiBold" Margin="0,4,0,12" />
+                                                <TextBlock Text="长会话风险" Style="{StaticResource Caption}" />
+                                                <TextBlock Text="{Binding LifecycleRiskText}" FontWeight="SemiBold" Margin="0,4,0,4" />
+                                                <TextBlock Text="{Binding LifecycleLoadText}" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding LifecycleRecentText}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                                <TextBlock Text="{Binding LifecycleRiskDetailText}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,4,0,14" />
+                                                <TextBlock Text="实际漂移（人工确认）" Style="{StaticResource Caption}" Margin="0,0,0,8" />
+                                                <UniformGrid Columns="3">
+                                                    <Button x:Name="DriftUnassessedButton" Tag="unassessed" Content="未评估" Margin="0,0,3,0" Padding="5,0" Click="OnSetDriftAssessment">
+                                                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource HudButton}"><Style.Triggers><DataTrigger Binding="{Binding IsDriftUnassessed}" Value="True"><Setter Property="Background" Value="{StaticResource HudSelected}" /><Setter Property="BorderBrush" Value="{StaticResource HudMint}" /></DataTrigger></Style.Triggers></Style></Button.Style>
+                                                    </Button>
+                                                    <Button x:Name="DriftOccasionalButton" Tag="occasional" Content="偶发漂移" Margin="3,0" Padding="5,0" Click="OnSetDriftAssessment">
+                                                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource HudButton}"><Style.Triggers><DataTrigger Binding="{Binding IsDriftOccasional}" Value="True"><Setter Property="Background" Value="{StaticResource HudSelected}" /><Setter Property="BorderBrush" Value="{StaticResource HudMint}" /></DataTrigger></Style.Triggers></Style></Button.Style>
+                                                    </Button>
+                                                    <Button x:Name="DriftRepeatedButton" Tag="repeated" Content="连续明显" Margin="3,0,0,0" Padding="5,0" Click="OnSetDriftAssessment">
+                                                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource HudButton}"><Style.Triggers><DataTrigger Binding="{Binding IsDriftRepeated}" Value="True"><Setter Property="Background" Value="{StaticResource HudSelected}" /><Setter Property="BorderBrush" Value="{StaticResource HudMint}" /></DataTrigger></Style.Triggers></Style></Button.Style>
+                                                    </Button>
+                                                </UniformGrid>
+                                                <TextBlock Text="{Binding DriftAssessmentDetailText}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,8,0,12" />
+                                                <TextBlock Text="{Binding ContinuationEvidenceText}" Style="{StaticResource Caption}" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </Expander>
+                                        <Expander Style="{StaticResource Disclosure}" Header="会话信息" Margin="0,5,0,0">
+                                            <StackPanel>
+                                                <TextBlock Text="Thread ID" Style="{StaticResource Caption}" />
+                                                <TextBox Text="{Binding ThreadId, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent"
+                                                         Foreground="{StaticResource HudText}" FontFamily="{StaticResource HudFont}" FontSize="13" Padding="0" Margin="0,5,0,12" />
+                                                <TextBlock Text="项目" Style="{StaticResource Caption}" /><TextBlock Text="{Binding Project}" TextWrapping="Wrap" Margin="0,3,0,10" />
+                                                <TextBlock Text="归属" Style="{StaticResource Caption}" /><TextBlock Text="{Binding ParentSummaryText}" TextWrapping="Wrap" Margin="0,3,0,10" />
+                                                <TextBlock Text="角色" Style="{StaticResource Caption}" /><TextBlock Text="{Binding RoleNickname}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                                            </StackPanel>
+                                        </Expander>
+                                    </StackPanel>
+                                </Grid>
+                            </ScrollViewer>
+                            <TextBlock Text="选择一个会话查看详情" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource Caption}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding}" Value="{x:Null}"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Grid Grid.Row="3" Margin="24,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <Button x:Name="DataStatusButton" Style="{StaticResource HudButton}" Background="Transparent" BorderThickness="0" Padding="0" Click="OnToggleDiagnostics" AutomationProperties.Name="数据状态与隐私">
+                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE72E;" FontFamily="{StaticResource HudIconFont}" FontSize="17" Margin="0,0,8,0" /><TextBlock Text="数据状态与隐私" Style="{StaticResource Caption}" /></StackPanel>
+                    </Button>
+                    <TextBlock Grid.Column="1" Text="raw token 与平台额度不同，不能直接换算。" Style="{StaticResource Caption}"
+                               HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="20,0,0,0" />
+                </Grid>
+
+                <Grid x:Name="SettingsPanel" Grid.RowSpan="4" Visibility="Collapsed" Panel.ZIndex="30" Background="#B3E4EBE6">
+                    <Border Width="410" HorizontalAlignment="Right" Background="{StaticResource HudPanel}" BorderBrush="{StaticResource HudLine}" BorderThickness="1,0,0,0" Padding="26">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="24" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel><TextBlock Text="设置" FontSize="24" FontWeight="SemiBold" /><TextBlock Text="所有设置仅保存在本机" Style="{StaticResource Caption}" Margin="0,6,0,0" /></StackPanel>
+                                <Button x:Name="CloseSettingsButton" Grid.Column="1" Style="{StaticResource IconButtonStyle}" Content="&#xE711;" ToolTip="关闭设置" AutomationProperties.Name="关闭设置" Click="OnCloseSettings" />
+                            </Grid>
+                            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <CheckBox x:Name="StartupCheckBox" Content="随 Windows 登录启动" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,12" Click="OnStartupSettingClick" />
+                                    <CheckBox x:Name="TopmostCheckBox" Content="窗口始终置顶" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,12" Click="OnTopmostSettingClick" />
+                                    <CheckBox x:Name="AutoHideCheckBox" Content="停靠边缘时自动隐藏" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,12" Click="OnAutoHideSettingClick" />
+                                    <StackPanel x:Name="QuotaSnapshotSettingBlock" Margin="0,4,0,0">
+                                        <CheckBox x:Name="QuotaSnapshotCheckBox" Content="导出本机额度快照" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,8,0,4" Click="OnQuotaSnapshotSettingClick" />
+                                        <TextBlock Text="默认关闭。打开后，每次额度刷新把六个槽的窗口、剩余百分比和重置时间写入 %LOCALAPPDATA%\CodexUsageHUD\quota-snapshot.json。只写额度数字和时间，不写账号或凭据。关闭后不再写入。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                    </StackPanel>
+                                    <TextBlock Text="默认停靠方向" Style="{StaticResource Caption}" Margin="0,18,0,8" />
+                                    <ComboBox x:Name="DockSideComboBox" Height="40" SelectionChanged="OnDockSideSettingChanged">
+                                        <ComboBoxItem Content="屏幕右侧" Tag="right" /><ComboBoxItem Content="屏幕左侧" Tag="left" />
+                                        <ComboBoxItem Content="屏幕顶部" Tag="top" /><ComboBoxItem Content="自由位置" Tag="none" />
+                                    </ComboBox>
+                                    <TextBlock Text="收起形态" Style="{StaticResource Caption}" Margin="0,18,0,8" />
+                                    <ComboBox x:Name="CompactLayoutComboBox" Height="40" SelectionChanged="OnCompactLayoutChanged">
+                                        <ComboBoxItem Content="六账户细边栏（推荐）" Tag="rail" />
+                                        <ComboBoxItem Content="原竖向紧凑卡" Tag="card" />
+                                    </ComboBox>
+                                    <Border Height="1" Background="{StaticResource HudLine}" Margin="0,24" />
+                                    <TextBlock Text="六个额度槽" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Text="启用后仅用该服务自己的本机登录读取额度。不会改写或复制登录文件。Cursor、Grok、Grok Bot 和 Claude 默认关闭，需在此勾选。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,8,0,12" />
+                                    <CheckBox x:Name="SlotCodexPrimaryEnabled" Content="Codex 当前（可进会话分析）" IsChecked="True" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,6" Click="OnProviderSettingsChanged" />
+                                    <TextBox x:Name="SlotCodexPrimaryLabel" Height="34" Margin="0,0,0,8" Padding="8,6" LostFocus="OnProviderSettingsChanged" />
+                                    <CheckBox x:Name="SlotCodexSecondaryEnabled" Content="Codex 第二账户（仅额度）" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,6" Click="OnProviderSettingsChanged" />
+                                    <TextBox x:Name="SlotCodexSecondaryLabel" Height="34" Margin="0,4,0,6" Padding="8,6" LostFocus="OnProviderSettingsChanged" />
+                                    <TextBlock Text="可选 Codex CLI 主目录。留空则继续读取本机 PI 的 ChatGPT/Codex 订阅。" Style="{StaticResource Caption}" Margin="0,0,0,6" TextWrapping="Wrap" />
+                                    <TextBox x:Name="SlotCodexSecondaryHome" Height="34" Margin="0,0,0,6" Padding="8,6" LostFocus="OnProviderSettingsChanged" />
+                                    <TextBlock Text="填写目录后，只对该目录启动只读 App Server 读取额度。不会自动猜测路径，失败时也不会改回 PI，不会复制登录或刷新凭据。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,10" />
+                                    <TextBlock x:Name="PiCodexPresenceText" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,10" />
+                                    <CheckBox x:Name="SlotCursorEnabled" Content="启用 Cursor 额度" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,6" Click="OnProviderSettingsChanged" />
+                                    <TextBox x:Name="SlotCursorLabel" Height="34" Margin="0,0,0,8" Padding="8,6" LostFocus="OnProviderSettingsChanged" />
+                                    <CheckBox x:Name="SlotGrokEnabled" Content="启用 Grok 额度" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,6" Click="OnProviderSettingsChanged" />
+                                    <TextBox x:Name="SlotGrokLabel" Height="34" Margin="0,0,0,8" Padding="8,6" LostFocus="OnProviderSettingsChanged" />
+                                    <CheckBox x:Name="SlotGrokBotEnabled" Content="启用 Grok Bot 额度" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,6" Click="OnProviderSettingsChanged" />
+                                    <TextBox x:Name="SlotGrokBotLabel" Height="34" Margin="0,0,0,8" Padding="8,6" LostFocus="OnProviderSettingsChanged" />
+                                    <TextBlock Text="Grok Bot 与 Cursor 使用同一个 Cursor 登录。同一付费席位上，Cursor、Grok、Bot 和 Build 共用一份每周额度；Cursor 和 Bot 上的共享周额度是这一份的两个视图，不要相加。Grok 这一格仍显示该登录自己的官方读数。它有时是整数，Cursor 有时带小数，这不代表另一份额度，也不会把数字抄到另一格。另一套登录或旧计划仍各自显示。缺少重置时间时不会按 7 天推算。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                    <CheckBox x:Name="SlotClaudeEnabled" Content="启用 Claude 订阅额度（仅额度）" Foreground="{StaticResource HudText}" FontSize="15" Margin="0,6" Click="OnProviderSettingsChanged" />
+                                    <TextBox x:Name="SlotClaudeLabel" Height="34" Margin="0,0,0,8" Padding="8,6" LostFocus="OnProviderSettingsChanged" />
+                                    <TextBlock Text="Claude 只读本机 Claude Code 已有 OAuth 登录，请求订阅用量。显示 5 小时和每周全部模型的剩余百分比，以及接口实际返回的模型窗口和重置时间。不分析会话，不从 raw token 或 API key 账单推算。未登录显示未连接；限流或格式不支持时显示不可用。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                    <Border Height="1" Background="{StaticResource HudLine}" Margin="0,24" />
+                                    <TextBlock Text="桌面快捷方式" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Text="窗口关闭后，也能从桌面重新打开 HUD。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,8,0,14" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Style="{StaticResource HudButton}" Content="创建 / 修复快捷方式" Click="OnCreateShortcut" Margin="0,0,8,0" />
+                                        <Button Style="{StaticResource HudButton}" Content="移除" Click="OnRemoveShortcut" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="SettingsStatusText" Foreground="{StaticResource HudMint}" TextWrapping="Wrap" Margin="0,14,0,0" />
+                                </StackPanel>
+                            </ScrollViewer>
+                            <TextBlock Grid.Row="3" Text="v1.0.5 · 数据保存在本机 CodexUsageHUD 目录" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,20,0,0" />
+                        </Grid>
+                    </Border>
+                </Grid>
+                <Grid x:Name="DiagnosticsPanel" Grid.RowSpan="4" Visibility="Collapsed" Panel.ZIndex="31" Background="#B3E4EBE6">
+                    <Border Width="460" HorizontalAlignment="Right" Background="{StaticResource HudPanel}" BorderBrush="{StaticResource HudLine}" BorderThickness="1,0,0,0" Padding="26">
+                        <DockPanel>
+                            <Grid DockPanel.Dock="Top" Margin="0,0,0,24"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel><TextBlock Text="数据状态与隐私" FontSize="23" FontWeight="SemiBold" /><TextBlock Text="只读元数据诊断" Style="{StaticResource Caption}" Margin="0,6,0,0" /></StackPanel>
+                                <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" Content="&#xE711;" ToolTip="关闭数据状态" AutomationProperties.Name="关闭数据状态" Click="OnCloseDiagnostics" />
+                            </Grid>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding QuotaSourceText}" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Text="{Binding FreshnessText}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                                    <TextBlock Text="{Binding LastUpdatedText}" Style="{StaticResource Caption}" Margin="0,5,0,20" />
+                                    <TextBlock Text="本周期摘要" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Text="{Binding CycleTotalText}" FontSize="26" FontWeight="SemiBold" Margin="0,8,0,6" />
+                                    <TextBlock Text="{Binding RunningCycleTotalText, StringFormat=运行中会话：{0}}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                    <TextBlock TextWrapping="Wrap" Style="{StaticResource Caption}">
+                                        <Run Text="主会话 " /><Run Text="{Binding PrimarySessionCountText, Mode=OneWay}" /><Run Text=" · APP " /><Run Text="{Binding AppSessionCountText, Mode=OneWay}" />
+                                        <Run Text=" · CLI " /><Run Text="{Binding CliSessionCountText, Mode=OneWay}" /><Run Text=" · 已识别子任务 " /><Run Text="{Binding InternalTaskCountText, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding BindingNote}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,7,0,20" />
+                                    <TextBlock Text="最近额度与索引事件" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock x:Name="EventsTextBlock" Text="{Binding EventsText}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,10,0,24" />
+                                    <TextBlock Text="隐私边界" Style="{StaticResource SectionTitle}" />
+                                    <TextBlock Text="不读取、展示或保存对话正文和凭据；不上传数据。仅记录会话来源、父子关系和用量元数据。" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,10,0,16" />
+                                    <TextBlock Text="raw token 与平台额度不是同一单位，不能直接换算。" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <Border x:Name="CompactVerticalShell" Background="{StaticResource HudBackground}" BorderBrush="{StaticResource HudLine}"
+                BorderThickness="1" CornerRadius="13" Padding="18,12">
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="34" /><RowDefinition Height="*" /><RowDefinition Height="38" /></Grid.RowDefinitions>
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock Text="CODEX" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button x:Name="CompactSettingsButton" Style="{StaticResource IconButtonStyle}" Width="30" Height="32" FontSize="15" Content="&#xE713;" ToolTip="设置" AutomationProperties.Name="设置" Click="OnSettings" />
+                        <Button x:Name="CompactTopmostButton" Style="{StaticResource IconButtonStyle}" Width="30" Height="32" FontSize="15" Content="&#xE718;" ToolTip="窗口始终置顶" AutomationProperties.Name="窗口置顶" Click="OnToggleTopmost" PreviewMouseLeftButtonDown="OnTopmostPointerDown" />
+                        <Button x:Name="CompactMinimizeButton" Style="{StaticResource IconButtonStyle}" Width="30" Height="32" FontSize="15" Content="&#xE921;" ToolTip="最小化到托盘" AutomationProperties.Name="最小化到托盘" Click="OnMinimizeToTray" />
+                    </StackPanel>
+                </Grid>
+                <StackPanel Grid.Row="1" Margin="0,12,0,10">
+                    <TextBlock Text="{Binding RemainingWindowText}" Style="{StaticResource Caption}" />
+                    <TextBlock x:Name="QuotaPercentText" Text="{Binding RemainingText}" FontSize="49" FontWeight="SemiBold" Foreground="{StaticResource HudMint}" Margin="0,-2,0,0" />
+                    <TextBlock x:Name="CompactQuotaStateText" Text="{Binding QuotaStateText}" Foreground="{StaticResource HudMint}" FontSize="13" Margin="0,0,0,8" ToolTip="{Binding QuotaStateDetailText}" />
+                    <ProgressBar x:Name="CompactProgress" Style="{StaticResource QuietProgress}" Value="{Binding QuotaRingValue, Mode=OneWay}" />
+                    <Grid Margin="0,16,0,14">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE823;" FontFamily="{StaticResource HudIconFont}" FontSize="15" VerticalAlignment="Center" Margin="0,0,7,0" /><TextBlock Text="{Binding CountdownCompactText}" FontSize="14" ToolTip="{Binding ResetTimeText}" /></StackPanel>
+                        <TextBlock Grid.Column="1" FontSize="13" Foreground="{StaticResource HudMuted}"><Run Text="{Binding RunningCountText, Mode=OneWay}" FontWeight="SemiBold" /><Run Text=" 运行中" /></TextBlock>
+                    </Grid>
+                    <Border Height="1" Background="{StaticResource HudLine}" />
+                    <Grid Margin="0,11,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="本周期 raw" Style="{StaticResource Caption}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding CycleCompactText}" FontSize="21" FontWeight="SemiBold" ToolTip="{Binding CycleTotalText}" />
+                    </Grid>
+                </StackPanel>
+                <Button x:Name="CompactExpandButton" Grid.Row="2" Style="{StaticResource PrimaryButton}" Click="OnToggleExpand" ToolTip="展开会话面板" AutomationProperties.Name="展开面板">
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="展开面板" Foreground="White" FontSize="14" FontWeight="SemiBold" /><TextBlock Text="&#xE76C;" FontFamily="{StaticResource HudIconFont}" FontSize="12" Foreground="White" Margin="18,3,0,0" /></StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+
+        <Border x:Name="CompactTopShell" Visibility="Collapsed" Background="{StaticResource HudBackground}" BorderBrush="{StaticResource HudLine}"
+                BorderThickness="1" CornerRadius="12" Padding="16,10">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Button x:Name="CompactTopExpandButton" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand"
+                        HorizontalContentAlignment="Stretch" Click="OnToggleExpand" ToolTip="展开会话面板" AutomationProperties.Name="展开面板">
+                    <Button.Template><ControlTemplate TargetType="Button"><Border x:Name="Hover" CornerRadius="7" Background="Transparent"><ContentPresenter /></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Hover" Property="Background" Value="{StaticResource HudHover}" /></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Hover" Property="BorderBrush" Value="{StaticResource HudMint}" /><Setter TargetName="Hover" Property="BorderThickness" Value="1" /></Trigger></ControlTemplate.Triggers></ControlTemplate></Button.Template>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="30" /><ColumnDefinition Width="100" /><ColumnDefinition Width="140" /><ColumnDefinition Width="85" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="&#xE9D2;" FontFamily="{StaticResource HudIconFont}" FontSize="22" Foreground="{StaticResource HudMint}" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0"><TextBlock x:Name="CompactTopRemainingText" Text="{Binding RemainingText}" Foreground="{StaticResource HudMint}" FontSize="26" FontWeight="SemiBold" /><TextBlock Text="{Binding RemainingWindowText}" Style="{StaticResource Caption}" /></StackPanel>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="12,0,0,0"><TextBlock x:Name="CompactTopCountdownText" Text="{Binding CountdownCompactText}" FontSize="17" FontWeight="SemiBold" /><TextBlock Text="距离重置" Style="{StaticResource Caption}" Margin="0,4,0,0" /></StackPanel>
+                        <StackPanel Grid.Column="3" VerticalAlignment="Center"><TextBlock x:Name="CompactTopRunningText" Text="{Binding RunningCountText}" FontSize="23" FontWeight="SemiBold" /><TextBlock Text="运行中" Style="{StaticResource Caption}" /></StackPanel>
+                        <StackPanel Grid.Column="4" VerticalAlignment="Center"><TextBlock Text="{Binding CycleCompactText}" FontSize="20" FontWeight="SemiBold" /><TextBlock Text="本周期 raw" Style="{StaticResource Caption}" Margin="0,3,0,0" /></StackPanel>
+                    </Grid>
+                </Button>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+                    <Button Style="{StaticResource IconButtonStyle}" Width="30" Height="36" FontSize="17" Content="&#xE713;" ToolTip="设置" AutomationProperties.Name="设置" Click="OnSettings" />
+                    <Button x:Name="CompactTopTopmostButton" Style="{StaticResource IconButtonStyle}" Width="30" Height="36" FontSize="17" Content="&#xE718;" ToolTip="窗口始终置顶" AutomationProperties.Name="窗口置顶" Click="OnToggleTopmost" PreviewMouseLeftButtonDown="OnTopmostPointerDown" />
+                    <Button x:Name="CompactTopMinimizeButton" Style="{StaticResource IconButtonStyle}" Width="30" Height="36" FontSize="17" Content="&#xE921;" ToolTip="最小化到托盘" AutomationProperties.Name="最小化到托盘" Click="OnMinimizeToTray" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Popup x:Name="SlotDetailPopup" AllowsTransparency="False" StaysOpen="True" Placement="Left"
+               PopupAnimation="Fade">
+        <Border x:Name="SlotDetailHost" Width="320" Background="{StaticResource HudPanel}"
+                BorderBrush="{StaticResource HudLine}" BorderThickness="1" CornerRadius="12" Padding="14,12"
+                HorizontalAlignment="Left" VerticalAlignment="Top">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding SlotDetailTitle}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+                    <Border Grid.Column="1" CornerRadius="8" Padding="8,2" Margin="8,0,4,0" VerticalAlignment="Center"
+                            Background="{StaticResource HudSelected}">
+                        <TextBlock Text="{Binding SlotDetailStatus}" FontSize="12" Foreground="{StaticResource HudMint}" />
+                    </Border>
+                    <Button Grid.Column="2" Style="{StaticResource IconButtonStyle}" Width="28" Height="28" FontSize="12"
+                            Content="&#xE711;" ToolTip="关闭详情" AutomationProperties.Name="关闭额度详情" Click="OnCloseSlotDetail" />
+                </Grid>
+                <TextBlock Text="{Binding SlotDetailAccountHint}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap"
+                           Foreground="{StaticResource HudMuted}"
+                           Visibility="{Binding SlotDetailAccountHintVisible, Converter={StaticResource BoolVisibility}}" />
+                <ItemsControl x:Name="SlotDetailWindowsList" ItemsSource="{Binding SlotDetailWindows}" Margin="0,10,0,4">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="0,0,0,12">
+                                <Grid>
+                                    <TextBlock Text="{Binding Name}" FontSize="13" Foreground="{StaticResource HudMuted}"
+                                               TextWrapping="Wrap" Margin="0,0,72,0" />
+                                    <TextBlock Text="{Binding RemainingText}" FontSize="22" FontWeight="Bold"
+                                               HorizontalAlignment="Right" Foreground="{StaticResource HudMint}" />
+                                </Grid>
+                                <ProgressBar Style="{StaticResource QuietProgress}" Value="{Binding ProgressValue}"
+                                             Margin="0,6,0,0"
+                                             Visibility="{Binding HasLiveProgress, Converter={StaticResource BoolVisibility}}" />
+                                <Rectangle Height="6" RadiusX="3" RadiusY="3" Stroke="{StaticResource HudLine}"
+                                           StrokeThickness="1.5" StrokeDashArray="3 2" Fill="Transparent" Margin="0,6,0,0"
+                                           Visibility="{Binding HasDashedTrack, Converter={StaticResource BoolVisibility}}" />
+                                <TextBlock Text="{Binding ResetText}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"
+                                           Foreground="{StaticResource HudSubtle}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock x:Name="SlotDetailShareNoteText" Text="{Binding SlotDetailShareNote}" FontSize="12"
+                           Margin="0,0,0,8" TextWrapping="Wrap" Foreground="{StaticResource HudMuted}"
+                           Visibility="{Binding SlotDetailShareNoteVisible, Converter={StaticResource BoolVisibility}}" />
+                <TextBlock Text="{Binding SlotDetailSource}" FontSize="12" TextWrapping="Wrap"
+                           Foreground="{StaticResource HudMuted}" />
+                <TextBlock Text="{Binding SlotDetailObserved}" FontSize="12" Margin="0,2,0,12" TextWrapping="Wrap"
+                           Foreground="{StaticResource HudMuted}" />
+                <Button x:Name="OpenPrimaryAnalysisButton" Style="{StaticResource PrimaryButton}" Height="36"
+                        Click="OnOpenPrimaryAnalysis"
+                        Visibility="{Binding SelectedSlotSuppliesAnalysis, Converter={StaticResource BoolVisibility}}">
+                    <TextBlock Text="打开会话分析" Foreground="White" FontSize="14" FontWeight="SemiBold" />
+                </Button>
+            </StackPanel>
+        </Border>
+        </Popup>
+
+        <Border x:Name="RailVerticalShell" Visibility="Collapsed" Background="{StaticResource HudBackground}"
+                BorderBrush="{StaticResource HudLine}" BorderThickness="1" CornerRadius="12" Padding="10,10,10,8">
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <Grid x:Name="RailHeaderBar">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock Text="额度" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                               TextTrimming="None" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button x:Name="RailSettingsButton" Style="{StaticResource IconButtonStyle}" Width="24" Height="24" FontSize="12" Margin="1,0" Content="&#xE713;" ToolTip="设置" AutomationProperties.Name="设置" Click="OnSettings" />
+                        <Button x:Name="RailTopmostButton" Style="{StaticResource IconButtonStyle}" Width="24" Height="24" FontSize="12" Margin="1,0" Content="&#xE718;" ToolTip="窗口始终置顶" AutomationProperties.Name="窗口置顶" Click="OnToggleTopmost" PreviewMouseLeftButtonDown="OnTopmostPointerDown" />
+                        <Button x:Name="RailMinimizeButton" Style="{StaticResource IconButtonStyle}" Width="24" Height="24" FontSize="12" Margin="1,0" Content="&#xE921;" ToolTip="最小化到托盘" AutomationProperties.Name="最小化到托盘" Click="OnMinimizeToTray" />
+                    </StackPanel>
+                </Grid>
+                <ScrollViewer x:Name="RailSlotScroller" Grid.Row="1" Margin="0,4,0,4"
+                              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              CanContentScroll="False">
+                <ItemsControl x:Name="RailSlotList" ItemsSource="{Binding Slots}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Margin="0,2" Padding="12,10" HorizontalContentAlignment="Stretch" Cursor="Hand"
+                                    Click="OnRailSlotClick" MouseEnter="OnRailSlotMouseEnter" GotKeyboardFocus="OnRailSlotFocus"
+                                    Tag="{Binding SlotId}" ToolTip="{Binding StatusText}"
+                                    AutomationProperties.Name="{Binding ShortAlias}">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="Chrome" Background="Transparent" CornerRadius="8" Padding="{TemplateBinding Padding}"
+                                                BorderThickness="1" BorderBrush="Transparent">
+                                            <Grid>
+                                                <Border Width="3" HorizontalAlignment="Left" Margin="-12,2,0,2" CornerRadius="2"
+                                                        x:Name="Accent" Background="Transparent" />
+                                                <ContentPresenter />
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource HudHover}" />
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource HudSelectedStrong}" />
+                                            </Trigger>
+                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource HudMint}" />
+                                            </Trigger>
+                                            <DataTrigger Value="True">
+                                                <DataTrigger.Binding>
+                                                    <MultiBinding Converter="{StaticResource SlotSelected}">
+                                                        <Binding Path="SlotId" />
+                                                        <Binding Path="DataContext.SelectedSlotId" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                    </MultiBinding>
+                                                </DataTrigger.Binding>
+                                                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource HudSelected}" />
+                                                <Setter TargetName="Accent" Property="Background" Value="{StaticResource HudMint}" />
+                                            </DataTrigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <ContentControl Width="34" Height="34" Margin="0,0,10,0" VerticalAlignment="Top"
+                                                    Content="{Binding}" ContentTemplate="{StaticResource ProviderMark}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding ShortAlias}" FontSize="14" FontWeight="SemiBold"
+                                                   TextWrapping="NoWrap" TextTrimming="None" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                            <TextBlock Text="{Binding GlancePercentText}" FontSize="22" FontWeight="Bold"
+                                                       Foreground="{StaticResource HudMint}" VerticalAlignment="Bottom"
+                                                       TextTrimming="None" />
+                                            <TextBlock Text="{Binding GlanceWindowCaption}" FontSize="12" Margin="8,0,0,0"
+                                                       Foreground="{StaticResource HudMuted}" VerticalAlignment="Bottom"
+                                                       TextWrapping="Wrap" TextTrimming="None" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding DelayText}" FontSize="11" Margin="0,1,0,0"
+                                                   Foreground="{StaticResource HudMuted}" TextWrapping="Wrap"
+                                                   Visibility="{Binding UpdateDelayed, Converter={StaticResource BoolVisibility}}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                </ScrollViewer>
+                <Button x:Name="RailExpandHint" Grid.Row="2" Style="{StaticResource HudButton}" Height="32" FontSize="12"
+                        Content="分析面板" Click="OnOpenPrimaryAnalysis" ToolTip="打开当前 Codex 会话分析" AutomationProperties.Name="打开会话分析" />
+            </Grid>
+        </Border>
+
+        <Border x:Name="RailTopShell" Visibility="Collapsed" Background="{StaticResource HudBackground}"
+                BorderBrush="{StaticResource HudLine}" BorderThickness="1" CornerRadius="12" Padding="10,8">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <ItemsControl x:Name="RailTopSlotList" ItemsSource="{Binding Slots}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Rows="1" Columns="6" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Margin="0,0,6,0" Padding="8,6" HorizontalContentAlignment="Stretch" Cursor="Hand"
+                                    Click="OnRailSlotClick" MouseEnter="OnRailSlotMouseEnter" GotKeyboardFocus="OnRailSlotFocus"
+                                    Tag="{Binding SlotId}" ToolTip="{Binding StatusText}"
+                                    AutomationProperties.Name="{Binding ShortAlias}">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="Chrome" Background="Transparent" CornerRadius="8" Padding="{TemplateBinding Padding}"
+                                                BorderThickness="1" BorderBrush="Transparent">
+                                            <ContentPresenter />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource HudHover}" />
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource HudSelectedStrong}" />
+                                            </Trigger>
+                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource HudMint}" />
+                                            </Trigger>
+                                            <DataTrigger Value="True">
+                                                <DataTrigger.Binding>
+                                                    <MultiBinding Converter="{StaticResource SlotSelected}">
+                                                        <Binding Path="SlotId" />
+                                                        <Binding Path="DataContext.SelectedSlotId" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                    </MultiBinding>
+                                                </DataTrigger.Binding>
+                                                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource HudSelected}" />
+                                            </DataTrigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <ContentControl Width="22" Height="22" Margin="0,0,8,0" VerticalAlignment="Top"
+                                                    Content="{Binding}" ContentTemplate="{StaticResource ProviderMark}">
+                                        <ContentControl.Style>
+                                            <Style TargetType="ContentControl">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding DataContext.TopBarNarrowLayout, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ContentControl.Style>
+                                    </ContentControl>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding ShortAlias}" FontSize="13" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" TextTrimming="None" />
+                                        <TextBlock Text="{Binding GlancePercentText}" FontSize="22" FontWeight="Bold"
+                                                   Foreground="{StaticResource HudMint}" TextTrimming="None" />
+                                        <TextBlock Text="{Binding DelayText}" FontSize="11" Margin="0,1,0,0"
+                                                   Foreground="{StaticResource HudMuted}" TextWrapping="Wrap"
+                                                   Visibility="{Binding UpdateDelayed, Converter={StaticResource BoolVisibility}}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource IconButtonStyle}" Width="30" Height="32" FontSize="14" Content="&#xE713;" ToolTip="设置" AutomationProperties.Name="设置" Click="OnSettings" />
+                    <Button x:Name="RailTopTopmostButton" Style="{StaticResource IconButtonStyle}" Width="30" Height="32" FontSize="14" Content="&#xE718;" ToolTip="窗口始终置顶" AutomationProperties.Name="窗口置顶" Click="OnToggleTopmost" PreviewMouseLeftButtonDown="OnTopmostPointerDown" />
+                    <Button x:Name="RailTopMinimizeButton" Style="{StaticResource IconButtonStyle}" Width="30" Height="32" FontSize="14" Content="&#xE921;" ToolTip="最小化到托盘" AutomationProperties.Name="最小化到托盘" Click="OnMinimizeToTray" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

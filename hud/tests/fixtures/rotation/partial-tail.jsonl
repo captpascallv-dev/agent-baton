@@ -1,0 +1,1 @@
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"thread-fixture-c","timestamp":1700000600,"info":{"total_token_usage":{"input_tokens":60,"output_tokens":20,"total_tokens":80},"last_token_usage":{"input_tokens":30,"output_tokens":10,"total_tokens":40}}}}

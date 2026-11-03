@@ -1,0 +1,5 @@
+{"type":"session_meta","payload":{"id":"fixture-real-thread-a"}}
+{"type":"turn_context","payload":{"thread_id":"fixture-real-thread-a","turn_id":"fixture-turn-a","timestamp":1700300000}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"fixture-real-thread-a","timestamp":1700300001,"info":{"total_token_usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12},"last_token_usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12},"context_window":128000}}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"fixture-real-thread-a","timestamp":1700300002,"info":{"total_token_usage":{"input_tokens":20,"output_tokens":4,"total_tokens":24},"last_token_usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12},"context_window":128000}}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"fixture-real-thread-a","timestamp":1700300003,"info":{"total_token_usage":{"input_tokens":20,"output_tokens":4,"total_tokens":24},"last_token_usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12},"context_window":128000}}}

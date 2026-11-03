@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest an improvement to Codex Usage HUD
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed experience
+    validations:
+      required: true
+  - type: checkboxes
+    id: boundary
+    attributes:
+      label: Product boundary
+      options:
+        - label: The proposal can remain local-only and does not require prompts, responses, credentials, telemetry, or service-tier changes.
+          required: true

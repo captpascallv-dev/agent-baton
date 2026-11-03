@@ -1,0 +1,3 @@
+{"type":"session_meta","payload":{"id":"thread-fixture-c"}}
+{"type":"turn_context","payload":{"thread_id":"thread-fixture-c","model":"gpt-5","turn_id":"turn-1"}}
+{"type":"event_msg","payload":{"type":"token_count","thread_id":"thread-fixture-c","timestamp":1700000500,"info":{"total_token_usage":{"input_tokens":30,"output_tokens":10,"total_tokens":40},"last_token_usage":{"input_tokens":30,"output_tokens":10,"total_tokens":40}}}}
