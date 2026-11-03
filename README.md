@@ -329,7 +329,17 @@ pwsh -NoProfile -File claude/tests/Smoke.ps1
 pwsh -NoProfile -File mailbox/tests/Smoke.ps1
 python acp/tests/smoke.py
 npm --prefix studio ci; npm --prefix studio run test:live
-python -m pip install -e "./onestead[dev]"; python -m pytest onestead/tests -q
+python -m pytest guards/file-guard/tests -q
+```
+
+`onestead/` 的测试要在 UTF-8 模式下、用一个空的临时目录当 HOME 和 TEMP 来跑，否则子进程的本地化输出和本机配置会让测试成片报错：
+
+```powershell
+python -m pip install -e ./onestead pytest
+$iso = Join-Path $env:TEMP "onestead-test-$(Get-Random)"; New-Item -ItemType Directory "$iso\home", "$iso\temp" | Out-Null
+$env:PYTHONUTF8 = '1'; $env:PYTHONIOENCODING = 'utf-8'
+$env:HOME = "$iso\home"; $env:USERPROFILE = "$iso\home"; $env:TEMP = "$iso\temp"; $env:TMP = "$iso\temp"
+python -m pytest onestead/tests -q
 ```
 
 `hud/` 和 `watch/` 一样需要 Windows 和 .NET SDK：`pwsh -NoProfile -File hud/scripts/test.ps1`。
