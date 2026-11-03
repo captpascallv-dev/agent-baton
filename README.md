@@ -4,7 +4,7 @@
 
 > agent-baton is the complete, local-first workflow we use every day to run a team of coding agents: one strong "lead" agent (Claude Code or Codex App) writes task cards, dispatches them to cheaper agent CLIs and reviews the results; local programs do the dispatching, the waiting and the waking, so no model ever polls; a studio, an execution window and a quota HUD make the whole team visible; guards keep a dozen parallel test runs from taking the machine down. The method is written down in [`method/`](method/).
 
-名字取自两种"棒"：指挥手里的指挥棒（Lead 负责指挥），接力赛里的接力棒（任务在 agent 之间交出、交回）。本仓库原名 `agent-lead-wake`，旧链接会自动跳转；原来单独发布的 [ai-moe-studio](https://github.com/captpascallv-dev/ai-moe-studio)（研究室）和 [codex-usage-hud](https://github.com/captpascallv-dev/codex-usage-hud)（额度 HUD）已连同完整历史并进来，分别在 [`studio/`](studio/) 和 [`hud/`](hud/)。
+名字取自两种"棒"：指挥手里的指挥棒（Lead 负责指挥），接力赛里的接力棒（任务在 agent 之间交出、交回）。本仓库原名 `agent-lead-wake`，旧链接会自动跳转；原来单独发布的 [ai-moe-studio](https://github.com/captpascallv-dev/ai-moe-studio)（研究室）、[codex-usage-hud](https://github.com/captpascallv-dev/codex-usage-hud)（额度 HUD）和 [onestead](https://github.com/captpascallv-dev/onestead)（公司事实底座）已连同完整历史并进来，分别在 [`studio/`](studio/)、[`hud/`](hud/) 和 [`onestead/`](onestead/)。
 
 ## 这是一套什么样的工作流
 
@@ -57,14 +57,18 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 | [`guards/`](guards/) | **内存护栏**：测试和构建套 Windows Job 内存上限，再加一个钩子拦住没套上限的测试命令，一群 agent 同时跑测试也不会把整机拖垮 |
 | [`tools/`](tools/) | `quota_pace.py` 读额度快照算各家消耗进度；`extract_dialogue.py` 把旧会话提成对话正文，换新会话时交接用 |
 
+**公司事实底座**
+
+| 目录 | 干什么 | 适用 |
+| --- | --- | --- |
+| [`onestead/`](onestead/) | **Onestead**：一个人或小公司的 AI 后台。项目现状、成员、决定、待办、要人点头的事、应用和 Skill 广场都在这里；任何 agent 经 MCP 接进来就能读到全部项目现状，不用人再复述。Lead 每完成一个阶段在这里记一条进展，需要人批准或动手的事登记成待办，人回来一眼看全 | Python 3.12+ |
+
 **可选接入**
 
 | 目录 | 干什么 |
 | --- | --- |
 | [`acp/`](acp/) | 通用 ACP（Agent Client Protocol）客户端，驱动任何支持 ACP 的执行者；权限请求默认拒绝并逐条留痕 |
 | [`docs/grokbot.md`](docs/grokbot.md) | 怎么用官方 BDK 扩展把一群 Grok Bot 当执行者（不带调用代码） |
-
-公司事实（项目、成员、决定、待办）我们放在另一个开源项目 [Onestead](https://github.com/captpascallv-dev/onestead)，任何 agent 接进来就能读到全部项目现状。两者可以分开用。
 
 ### 怎么组合
 
@@ -73,6 +77,8 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
               │   Lead A ⇄ Lead B：商量、交接、回执   │
               └──────────────────────────────────┘
  Lead（Claude Code / Codex App）  ◀── 派活前读额度快照 ── hud/ + tools/quota_pace.py
+   │  ▲ 读项目现状，记进展、决定、要人批的事
+   │  └──────────────────────────────▶ onestead/（MCP）◀── 人在网页上看、批
    │  写任务卡（method/）
    ▼
  claude/ Dispatch.ps1 ──启动──▶ 执行者（Codex CLI / Cursor / Grok Build / PI / 任何 ACP agent …）
@@ -88,6 +94,29 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 - **不止一个 Lead** 时，加上 `mailbox/`。它不启动执行者，也不看 `READY.json`，只负责 Lead 之间的信。
 - **想随时看执行情况** 时，加上 [`watch/`](watch/)。它读取登记和进程身份，不派单，也不把进程结束或交卷当成业务验收。
 - **想让一群 Grok Bot 当执行者**：见 [docs/grokbot.md](docs/grokbot.md)。本仓库不带调用代码，只讲清怎么用官方 BDK 扩展接入、要加哪层约定、踩过哪些坑。
+- **公司事实**放在 [`onestead/`](onestead/)：Lead 开工前从这里读项目现状，阶段做完记进展，要人批准、动手或知道的事登记成待办。人不用翻聊天记录，回来看 Onestead 就知道每个项目到哪了、有哪些事等他。
+
+## 平台支持：Windows 和 macOS
+
+这套东西是在 Windows 11 上天天用出来的，Windows 上全部组件都有实际运行验证。macOS 的情况按组件分三类：
+
+| 组件 | macOS | 说明 |
+| --- | --- | --- |
+| `method/` 工作流方法 | 适用 | 纯文档 |
+| `claude/` 派活和叫醒、`mailbox/` Lead 之间的信箱 | 应该适用，未实测 | PowerShell 7 脚本，先装 `brew install --cask powershell`；没有在 Mac 上跑过 |
+| `acp/` ACP 客户端 | 应该适用，未实测 | 结束进程已分平台处理 |
+| `tools/extract_dialogue.py` | 适用 | 纯 Python |
+| `onestead/` | 应该适用，未实测 | 只有模拟测试覆盖 macOS；网页上“打开本机应用或目录”在 macOS 不可用，见 [onestead/README.zh.md](onestead/README.zh.md) |
+| `codex/` Codex App 叫醒插件 | 未验证 | 代码有 POSIX 文件锁和 Unix 配置路径，但没在 Mac 的 Codex App 上真实收过一次唤醒 |
+| `studio/` 研究室 | 演示模式适用；真实模式需要重新做 | 网页演示是 Node，跨平台；读本机真实状态和启动器依赖 Windows |
+| `watch/` 执行观察窗 | 需要重新做 | WPF，只支持 Windows |
+| `hud/` 额度 HUD | 需要重新做 | WPF / net8.0-windows，只支持 Windows |
+| `tools/quota_pace.py` | 需要额度快照 | 读 `hud/` 写出的快照；macOS 没有 HUD，可以按同样格式自己写一份 |
+| `guards/` 内存护栏和删除护栏 | 需要重新做 | 内存上限用 Windows Job 对象，删除护栏按 Windows 路径、PowerShell 解析和回收站语义写；macOS 没有可靠的硬内存上限，要改成监视内存、超限结束进程树 |
+
+一句话：在 macOS 上，“写卡 → 派活 → 等交卷 → 被叫醒 → Lead 之间写信 → 记进 Onestead”这条主线预计能跑，但还没实测；三个“看得见”的窗口里只有研究室演示模式能开，两道护栏要另做一套。
+
+> **macOS in one line:** the core loop (method, dispatch and wake, lead mailbox, ACP client, Onestead) should work with PowerShell 7 but has not been run on a Mac yet; the studio demo runs anywhere Node runs; the studio live mode, the execution window, the quota HUD and both guards are Windows-only today and need a macOS rewrite.
 
 ---
 
@@ -96,8 +125,9 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 1. 读一遍 [`method/README.md`](method/README.md)，十分钟，知道每个角色做什么。
 2. 把 [`claude/CLAUDE.snippet.md`](claude/CLAUDE.snippet.md) 放进你的 `CLAUDE.md`，路径改成本仓库位置；复制 `claude/executors.example.json` 为 `claude/executors.json`，只留你装了的 CLI，核对模型和权限参数。
 3. 装内存护栏钩子（[`guards/README.md`](guards/README.md)），`pip install pywin32`。
-4. 可选：装 [`hud/`](hud/) 看额度、开 [`studio/`](studio/) 的演示模式看看研究室（`npm --prefix studio install`，再 `npm --prefix studio run demo`）。
-5. 对 Lead 说“调用外部执行，帮我做 XXX”。它会写卡、派单、挂守候，然后结束这一轮；执行者交卷时它自己醒来验收。
+4. 装 [`onestead/`](onestead/)：`python -m pip install ./onestead`，`onestead init <数据目录> --owner <你的名字>` 建公司，`onestead connect` 预览、`onestead connect --apply` 接进 Claude Code 等客户端。细节见 [onestead/README.zh.md](onestead/README.zh.md)。
+5. 可选：装 [`hud/`](hud/) 看额度、开 [`studio/`](studio/) 的演示模式看看研究室（`npm --prefix studio install`，再 `npm --prefix studio run demo`）。
+6. 对 Lead 说“调用外部执行，帮我做 XXX”。它会写卡、派单、挂守候，然后结束这一轮；执行者交卷时它自己醒来验收。
 
 下面是各部分的单独用法。
 
@@ -205,6 +235,7 @@ pwsh -NoProfile -File claude/tests/Smoke.ps1
 pwsh -NoProfile -File mailbox/tests/Smoke.ps1
 python acp/tests/smoke.py
 npm --prefix studio ci; npm --prefix studio run test:live
+python -m pip install -e "./onestead[dev]"; python -m pytest onestead/tests -q
 ```
 
 `hud/` 和 `watch/` 一样需要 Windows 和 .NET SDK：`pwsh -NoProfile -File hud/scripts/test.ps1`。
@@ -230,6 +261,7 @@ pwsh -NoProfile -File watch/tests/Smoke.ps1
 - `watch/`：[MPL-2.0](watch/LICENSE)，来源与第三方声明见 [watch/NOTICE.txt](watch/NOTICE.txt)。
 - `studio/`：代码 [MIT](studio/LICENSE)；角色与场景素材 CC BY-NC-SA 4.0，仅限非商业使用，原设计署名见 [studio/CREDITS.md](studio/CREDITS.md) 和 [studio/ASSETS-LICENSE.md](studio/ASSETS-LICENSE.md)。
 - `hud/`：[MIT](hud/LICENSE)，第三方声明见 [hud/THIRD_PARTY_NOTICES.md](hud/THIRD_PARTY_NOTICES.md)。
+- `onestead/`：[Apache-2.0](onestead/LICENSE)。
 
 ## 致谢
 
