@@ -332,13 +332,11 @@ npm --prefix studio ci; npm --prefix studio run test:live
 python -m pytest guards/file-guard/tests -q
 ```
 
-`onestead/` 的测试要装上抽文档用的可选依赖 `[docs]`，在 UTF-8 模式下、用一个短路径下的空目录当 HOME 和 TEMP 来跑，否则子进程的本地化输出和本机配置会让测试成片报错：
+`onestead/` 的测试要用一个短路径下的空目录当 HOME 和 TEMP 来跑：测试会建很深的目录，路径太长会超过 Windows 的长度上限，用真实家目录还会读到本机配置。抽文档的可选依赖 `[docs]` 装了才跑文档类测试，不装会跳过 3 条：
 
 ```powershell
 python -m pip install -e "./onestead[docs]" pytest
-# 放短路径：测试会建很深的目录，太长会超过 Windows 路径上限
 $iso = "C:\ost-$(Get-Random)"; New-Item -ItemType Directory "$iso\home", "$iso\temp" | Out-Null
-$env:PYTHONUTF8 = '1'; $env:PYTHONIOENCODING = 'utf-8'
 $env:HOME = "$iso\home"; $env:USERPROFILE = "$iso\home"; $env:TEMP = "$iso\temp"; $env:TMP = "$iso\temp"
 python -m pytest onestead/tests -q
 ```
