@@ -365,7 +365,3 @@ pwsh -NoProfile -File watch/tests/Smoke.ps1
 - `studio/`：代码 [MIT](studio/LICENSE)；角色与场景素材 CC BY-NC-SA 4.0，仅限非商业使用，原设计署名见 [studio/CREDITS.md](studio/CREDITS.md) 和 [studio/ASSETS-LICENSE.md](studio/ASSETS-LICENSE.md)。
 - `hud/`：[MIT](hud/LICENSE)，第三方声明见 [hud/THIRD_PARTY_NOTICES.md](hud/THIRD_PARTY_NOTICES.md)。
 - `onestead/`：[Apache-2.0](onestead/LICENSE)。
-
-## 致谢
-
-“合并前只读交叉审查”和“定了不做的事”两条做法，参考了数字生命卡兹克公开分享的 Agent 自动化系统。
