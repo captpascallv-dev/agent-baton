@@ -16,6 +16,9 @@ def file_label(rel: str, by_rel: dict[str, Doc]) -> str:
         name = main.title if main else parts[1]
         kind = {"project.md": "项目信息", "status.md": "进展", "links.md": "相关链接"}.get(parts[2], parts[2])
         return f"{name} · {kind}"
+    if parts[0] == "projects" and len(parts) == 4 and parts[2] == "status":
+        main = by_rel.get(f"projects/{parts[1]}/project.md")
+        return f"{main.title if main else parts[1]} · 进展归档 {Path(rel).stem}"
     doc = by_rel.get(rel)
     title = doc.title if doc else Path(rel).stem
     prefix = {"decisions": "决定", "assets": "资产", "people": "成员", "handbook": "手册",

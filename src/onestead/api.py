@@ -104,7 +104,7 @@ def dispatch(base: CompanyBase, method: str, params: dict):
         project_id = values.pop("id").strip()
         return {"id": project_id, "commit": base._create_project_commit(project_id, **values)}
     if method == "append_status":
-        _, commit = base._append_status_commit(params["project_id"], params["text"], params["signed_as"])
+        _, commit, _ = base._append_status_commit(params["project_id"], params["text"], params["signed_as"])
         return {"commit": commit}
     if method == "list_skills":
         _, _, visible = base._internal_only(tr("agent.473"))

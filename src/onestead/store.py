@@ -258,6 +258,23 @@ class Store:
         return out
 
 
+STATUS_ARCHIVE_DIR = "status"  # projects/<id>/status/YYYY-MM.md：从 status.md 按月移出的较早进展
+
+
+def archived_status_docs(root: str | Path, docs: list[Doc]) -> list[Doc]:
+    """归档的进展只在搜索时读，不进 load()，免得每次调用都把旧进展过一遍。可见性跟着各自的 status.md。"""
+    root = Path(root)
+    out = []
+    for status in docs:
+        if status.kind != "project-status":
+            continue
+        folder = root / status.rel.rsplit("/", 1)[0] / STATUS_ARCHIVE_DIR
+        for path in sorted(folder.glob("*.md")):
+            raw = io.open(path, encoding="utf-8").read().replace("\r\n", "\n")
+            out.append(replace(status, rel=path.relative_to(root).as_posix(), body=raw, raw=raw))
+    return out
+
+
 def is_archived(meta: dict) -> bool:
     """停用是严格的布尔值；缺字段或 false 都还在用。"""
     return isinstance(meta, dict) and meta.get("archived") is True
