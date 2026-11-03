@@ -1,4 +1,19 @@
-# Public Codex 0.5.0 validation
+# Public Codex 0.5.1 targeted validation
+
+2026-11-03 (Asia/Taipei), Windows, Node 24.19.0, Python 3.12.10.
+
+Eight targeted results passed, including two nested revocation cases, with no failures or skips. The run covered responsive terminal-history recovery, stopping on close, stdio/delegated receipt recovery, batch-receipt fanout, ambiguous-batch non-replay and withdrawal during preflight/claim. Unchanged behavior retains its 0.5.0 evidence below; the full suite was not rerun.
+
+```text
+node --test --test-name-pattern "terminal history|standard stdio process restart|delegated recovery|durable batch receipt|ambiguous batch|revocation during preflight" codex/tests/public.test.mjs
+node codex/tools/check-public.mjs
+```
+
+Both ran under a 2 GiB cap, with peaks of 0.15 and 0.06 GiB respectively. The structure check verified version 0.5.1, six reception tools, 13 Node syntax checks, three Python AST checks, explicit configuration, bundled dependencies and no literal user paths/session IDs.
+
+This is a local consolidation candidate, not a published release. Synthetic state and fake transport only; no production mailbox, real notification or shared App restart. macOS execution and real Desktop delivery remain unverified. Private-only supervisor features were not imported.
+
+## Preserved 0.5.0 validation
 
 2026-10-25 (Asia/Taipei), Windows, Node 24.19.0 and Python 3.12.10.
 

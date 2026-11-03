@@ -77,6 +77,29 @@ const deliveries = f => sends(f).filter(item => item.params.arguments.prompt.sta
 const faults = f => sends(f).filter(item => item.params.arguments.prompt.startsWith('[app-mailbox-transport-fault:'));
 const central = (f, id) => readJson(path.join(f.mailboxRoot, 'deliveries', `${id}.json`));
 
+test('terminal history recovery lets timers run before the scan finishes and stops on close', async t => {
+  const f = fixture(t), e = engine(f), count = 120;
+  for (let i = 0; i < count; i++) write(path.join(e.stateDir, 'deliveries', key(`old-${i}`), 'outcome.json'), { status: 'sent' });
+  const original = fs.readFileSync;
+  let reads = 0;
+  fs.readFileSync = function(filename, ...args) {
+    if (String(filename).endsWith('outcome.json')) reads++;
+    return original.call(this, filename, ...args);
+  };
+  try {
+    const timer = new Promise(resolve => setTimeout(() => resolve(reads), 0));
+    await e.recoverLocalReceipts();
+    assert.equal(reads, count);
+    assert.ok(await timer < count, 'a live deadline must run during history recovery');
+    reads = 0;
+    const recovering = e.recoverLocalReceipts();
+    e.close();
+    await recovering;
+    assert.equal(reads, 0);
+    assert.equal(sends(f).length, 0);
+  } finally { fs.readFileSync = original; }
+});
+
 test('default send deadline preserves real 31-second acceptance and refusal without repeating either delivery', { timeout: 45000 }, async t => {
   await Promise.all(['accept', 'reject'].map(async mode => {
     const f = fixture(t); const item = job(f, mode);
@@ -343,7 +366,7 @@ test('standard stdio process restart recovers durable exact receipt with ack onl
   assert.throws(() => resolveInstalledOfficialEntry({ cacheRoot: cache, appToolsEntry: path.join(root, 'tests', 'fixtures', 'fake-host.mjs') }), /valid server.mjs/);
   const first = service(f, path.join(root, 'tests', 'fixtures', 'crash-service.mjs')); let second;
   try {
-    assert.equal((await first.call('initialize')).serverInfo.version, '0.5.0');
+    assert.equal((await first.call('initialize')).serverInfo.version, '0.5.1');
     await first.call('tools/call', { name: 'start_app_mailbox_watch', arguments: { project: 'demo' }, _meta: { 'x-codex-turn-metadata': { thread_id: owner } } });
     await until(() => first.child.exitCode === 17); assert.equal(deliveries(f).length, 1); assert.equal(central(f, item.id).state, 'sending');
     second = service(f, path.join(root, 'plugin', 'server.mjs')); await second.call('initialize');
@@ -559,7 +582,7 @@ test('public stdio grant then service reload with no actor or tools/call resumes
   const f = fixture(t); write(f.config, { ...JSON.parse(fs.readFileSync(f.config)), pollIntervalMs: 1000 });
   const env = { ...f.env }; delete env.CODEX_THREAD_ID;
   first = service(f, path.join(root, 'plugin', 'server.mjs'), env);
-  assert.equal((await first.call('initialize')).serverInfo.version, '0.5.0');
+  assert.equal((await first.call('initialize')).serverInfo.version, '0.5.1');
   const params = name => ({ name, arguments: {}, _meta: { 'x-codex-turn-metadata': { thread_id: coordinator } } });
   toolValue(await first.call('tools/call', params('start_app_mailbox_watch')));
   const grantId = toolValue(await first.call('tools/call', params(GRANT))).delegation.grantId;

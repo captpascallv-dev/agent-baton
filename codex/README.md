@@ -1,4 +1,4 @@
-# Codex Mail Wake 0.5.0
+# Codex Mail Wake 0.5.1
 
 MIT。Node 22+、Python 3.10+。独立的可安装 Codex 插件：普通程序持续接收已登记 CLI/Bot 交付，完整通知发给登记时的原 Lead。没有私信功能、执行器启动、provider 调用或 PID 看门。收到一次交付后继续守候，默认没有总截止；等待本身不调用模型，Lead 处理通知仍会调用模型。
 
@@ -85,6 +85,10 @@ READY 无内嵌 job/attempt ID，因此规范化 outbox 永久绑定一个 proje
 权限按真实 tools/call metadata（无 metadata 时真实 executor env）检查。后台 actor 优先取本次 `CODEX_THREAD_ID`，缺失才由本实例真实工具 metadata 绑定；仅这两者均缺失时，有效明确委托可提供后台 actor。持久 registrar 不构成委托，委托永不充当普通工具 caller。没有伪造 turn_id、改变原模型/档位/服务档。start/stop/grant/revoke 遵循正常 prompt 审批；官方审批配置未改，原生拒绝不换路处理。
 
 `scan -> 原子 claim -> 官方 send -> exact receipt ack`。每件 claim.prompt 完整保留，包括自动投递说明和原报告；单件原样发送，多件按同 owner 合批。读取原 owner，只有 idle/notLoaded 可送；active/systemError/未知保持 pending。[官方 ThreadStatus 类型](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/schema/typescript/v2/ThreadStatus.ts)与[thread/read 文档](https://learn.chatgpt.com/docs/app-server#read-a-stored-thread-without-resuming)是接口依据，read 不会加载线程。sent 仅证明通知接受，Lead实际接续/任务验收另行确认。
+
+## 0.5.1：历史恢复扫描保持响应
+
+大量历史终态记录恢复时逐件让出事件循环，使桥接回复、请求超时和停止动作可以及时执行。旧收据、已处理回执、锁、权限和不确定投递的单次发送规则保持；本版不增加私人信箱、系统看门或宿主重启能力。
 
 ## 0.5.0：已处理回执与积压合批
 

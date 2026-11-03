@@ -3,7 +3,7 @@ name: mail-wake
 description: Start, inspect or stop authorized CLI/Bot reception, acknowledge already-handled notifications, and manage coordinator background delegation.
 ---
 
-Codex Mail Wake 0.5.0, MIT. Node22+/Python3.10+. Only registered outbox delivery reception; no personal inbox or provider execution.
+Codex Mail Wake 0.5.1, MIT. Node22+/Python3.10+. Only registered outbox delivery reception; no personal inbox or provider execution.
 
 If the original owner has already actually read/handled registered deliveries before notification, it may call `ack_app_mailbox_delivery({"deliveryIds":["EXACT_DELIVERY_ID"]})` with 1–32 unique IDs. Every item must belong to that real caller, who must still be the current route owner; no coordinator override or delegated caller identity. A busy target lock records nothing. The receipt suppresses only pending notifications without a committed intent/claim; it never records task acceptance, fabricates sent, or cancels an in-flight send. Preserve `handled.json` and report `ownerHandled` separately from transport status.
 

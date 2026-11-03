@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
+import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import { key } from './ids.mjs';
 import { readJson, writeJsonAtomic, createJsonOnce } from './store.mjs';
 import { exactSendReceipt } from './official-tools.mjs';
@@ -569,6 +570,9 @@ export class AppMailboxEngine {
   async recoverLocalReceipts() {
     for (const folder of fs.readdirSync(path.join(this.stateDir, 'deliveries'))) {
       if (!/^id-[A-Za-z0-9_.%-]+$/.test(folder)) continue;
+      // Large terminal histories must leave time for bridge replies and deadlines.
+      await yieldToEventLoop();
+      if (this.closed) return;
       const outcome = readJson(path.join(this.stateDir, 'deliveries', folder, 'outcome.json'));
       if (outcome && !outcome._unreadable && terminalOutcomes.has(outcome.status)) continue;
       const intentPath = path.join(this.stateDir, 'deliveries', folder, 'intent.json'); const intent = readJson(intentPath);
