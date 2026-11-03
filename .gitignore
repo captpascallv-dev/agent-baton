@@ -12,6 +12,7 @@ codex/runtime/
 codex/state/
 outboxes/
 test-evidence/
+ai-moe-studio-state/
 node_modules/
 __pycache__/
 *.pyc

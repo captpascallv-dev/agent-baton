@@ -6,6 +6,8 @@
 
 桥接需要 .NET 8 SDK。
 
+下列命令在 agent-baton 的 `studio/` 目录执行；从仓库根先 `cd studio`。外置配置默认位于仓库外的 `../../ai-moe-studio-state/config.json`，也可用 `Start-Studio.ps1 -ConfigPath` 明确指定。
+
 1. 从 CLI Watch 0.1.0 发布页（https://github.com/captpascallv-dev/agent-baton/releases/tag/watch-v0.1.0）下载 `CLIWatch-0.1.0-win-x64.zip` 并解压。
 2. 用解压文件夹作为 `CliWatchRuntimeDirectory` 构建桥接：
 

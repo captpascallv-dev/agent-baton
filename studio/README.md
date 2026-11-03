@@ -96,6 +96,8 @@ Gemini（蓝紫猫耳少女）和 Kimi（银发书记官）也住在研究室里
 
 ## 快速开始
 
+以下命令都在合仓后的 `studio/` 目录运行；从 agent-baton 仓库根先执行 `cd studio`。
+
 ### 演示模式
 
 除了 npm 依赖，不需要别的。
@@ -121,7 +123,7 @@ npm run build
 dotnet build bridge/StudioBridge.csproj -c Release -m:1 -p:UseSharedCompilation=false -p:CliWatchRuntimeDirectory="<解压后的 CLIWatch-0.1.0-win-x64 文件夹>"
 ```
 
-3. 把 `config.example.json` 复制到项目旁的 `../ai-moe-studio-state/config.json`。`cliWatchRuntimeDirectory` 填同一个解压文件夹，`cliWatchConfig` 填该文件夹下的 `config/default.json`，再填上桥接程序的路径，然后：
+3. 把 `config.example.json` 复制到仓库外的 `../../ai-moe-studio-state/config.json`（相对 `studio/`）。`cliWatchRuntimeDirectory` 填同一个解压文件夹，`cliWatchConfig` 填该文件夹下的 `config/default.json`，再填上桥接程序的路径，然后：
 
 ```powershell
 powershell -NoProfile -File .\Start-Studio.ps1
@@ -246,6 +248,8 @@ All community characters are unofficial. See [CREDITS.md](CREDITS.md).
 
 ## Quick start
 
+Run the commands below from the consolidated repository's `studio/` directory: run `cd studio` first from the agent-baton root.
+
 ### Demo mode
 
 Nothing beyond the npm dependencies.
@@ -271,7 +275,7 @@ npm run build
 dotnet build bridge/StudioBridge.csproj -c Release -m:1 -p:UseSharedCompilation=false -p:CliWatchRuntimeDirectory="<unzipped CLIWatch-0.1.0-win-x64 folder>"
 ```
 
-3. Copy `config.example.json` to `../ai-moe-studio-state/config.json` next to the project. Set `cliWatchRuntimeDirectory` to the same unzipped folder, set `cliWatchConfig` to `config/default.json` inside that folder, fill in the bridge path, then run:
+3. Copy `config.example.json` to `../../ai-moe-studio-state/config.json`, outside the repository (relative to `studio/`). Set `cliWatchRuntimeDirectory` to the same unzipped folder, set `cliWatchConfig` to `config/default.json` inside that folder, fill in the bridge path, then run:
 
 ```powershell
 powershell -NoProfile -File .\Start-Studio.ps1
