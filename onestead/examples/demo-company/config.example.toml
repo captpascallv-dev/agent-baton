@@ -1,0 +1,5 @@
+# Absolute path of this example directory, after you copy it out and commit it.
+data_dir = "<absolute path of this example directory>"
+# Owner of this sample. The local web app uses this member key.
+owner_key = "alex"
+# This sample runs on the local machine only.

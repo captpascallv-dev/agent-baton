@@ -1,0 +1,46 @@
+[project]
+name = "onestead"
+version = "0.1.0"
+description = "An AI back office for a small company, or a company of one."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=2.3,<3",
+    "pyyaml>=6",
+    "markdown>=3.6",
+    "nh3>=0.2",
+    "starlette>=0.40",
+    "uvicorn>=0.30",
+    "segno>=1.6",
+    "send2trash>=1.8; sys_platform != 'win32'",
+]
+
+[project.optional-dependencies]
+# 共享文件夹里抽 PDF、Word、PPT、Excel 的文字
+docs = ["pypdf>=5", "python-docx>=1.1", "python-pptx>=1.0", "openpyxl>=3.1", "xlrd>=2.0"]
+
+[project.scripts]
+onestead-mcp = "onestead.server:main"
+onestead-remote = "onestead.server:main_remote"
+onestead = "onestead.cli:main"
+onestead-backup = "onestead.backup:main"
+# 旧安装的任务、快捷方式和 agent 配置仍使用这些命令。
+company-base-mcp = "onestead.server:main"
+company-base-remote = "onestead.server:main_remote"
+company-base = "onestead.cli:main"
+company-base-backup = "onestead.backup:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/onestead", "src/company_base"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

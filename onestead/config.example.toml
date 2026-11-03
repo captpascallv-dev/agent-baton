@@ -1,0 +1,43 @@
+# 这一套底座的显示名，界面、登录页、入职说明和接入提示共用。可用 ONESTEAD_NAME 覆盖。
+name = "Onestead"
+# 公司界面语言：en / zh，默认 en；可用 ONESTEAD_LANG 覆盖，旧名 COMPANY_BASE_LANG 也认。
+lang = "en"
+# 数据仓库目录，必填；也可用 ONESTEAD_DATA。
+data_dir = "<数据目录>"
+# 对外域名（不带协议、端口或路径），对外上线必填；也可用 ONESTEAD_PUBLIC_HOST。
+public_host = "base.example.com"
+# 静态网页的一级子域名；不填关闭整个应用发布功能。ONESTEAD_SITE_DOMAIN 优先。
+# site_domain = "example.com"
+# 在内置保留短名及 public_host 第一段之外，再保留哪些短名。
+reserved_slugs = []
+# 公司主人的成员身份键，必填；也可用 ONESTEAD_OWNER。
+owner_key = "<主人键>"
+# 本机状态目录；可用 ONESTEAD_STATE_DIR。Windows 新装默认 LOCALAPPDATA/Onestead，没有 LOCALAPPDATA 就用 ~/Onestead。
+# macOS 默认 ~/Library/Application Support/Onestead；Linux 默认 $XDG_STATE_HOME/onestead，未设置时用 ~/.local/state/onestead。
+# 新目录不存在且旧目录存在时继续用旧目录，不搬文件；旧安装兼容说明见 README.md。
+# state_dir = "<状态目录>"
+# 可选备份根目录；可用 ONESTEAD_BACKUP_DIR。不配就不备份，空环境变量也会关闭备份。
+# 只选本机且不向云端同步的目录；保留现有备份槽位、_待删除 和 INDEX.json 的格式。
+# backup_dir = "<备份根目录>"
+# 可选：备份时打包的代码仓库（源码 git checkout）；可用 ONESTEAD_SOURCE_REPO。
+# 不配时从程序所在目录往上找；普通 pip install . 找不到，就只备份数据仓库并在清单里写明原因。
+# source_repo = "<源码仓库目录>"
+# 额外本机工具的 Skill 目录；可用 ONESTEAD_SKILL_HARNESSES（旧名 COMPANY_BASE_SKILL_HARNESSES，JSON 列表）。
+# 每项有 key、name、user，可选 builtin、plugins；路径均为列表，~ 展开为进程用户的家目录。
+# 同 key 追加路径并保留内置名称；新 key 添加本机工具，与内置项一样参与比对、分享和安装提示，不是快照。
+skill_harnesses = []
+# skill_harnesses = [{key = "sample-agent", name = "Sample Agent", user = ["~/.sample-agent/skills"], builtin = ["~/.sample-agent/skills/.system"], plugins = ["~/.sample-agent/plugins/cache"]}]
+# 额外 Skill 快照；可用 ONESTEAD_SKILL_SNAPSHOTS（JSON 列表）。不配就不扫额外目录。
+skill_snapshots = []
+# 普通快照的 root 下直接放技能目录：
+# skill_snapshots = [{key = "assistant", name = "远程环境", root = "<快照目录>"}]
+# 分批导出的快照按目录名排序取最新一份，再扫描指定子路径：
+# skill_snapshots = [{key = "assistant", name = "远程环境", root = "<快照目录>", layout = {type = "latest-subdir", pattern = "skills-*", subpaths = ["exports/user-workflows", "exports/third-party"]}}]
+# ONESTEAD_TOKENS、ONESTEAD_USAGE_LOG、ONESTEAD_FEISHU_DIR 覆盖各状态文件位置；ONESTEAD_USAGE_LOG 空值关闭日志。
+# ONESTEAD_SKILL_HOME 覆盖扫描的 home；ONESTEAD_CLOUDFLARED 指定隧道程序位置。
+
+# 可选：把本机文件夹只读开放给指定伙伴（目前经网页版 ChatGPT 的 search / fetch 读）；可用 ONESTEAD_SHARED_FOLDERS（JSON 列表）。
+# readers 写成员的 agent_key；只读白名单类型（md、txt、csv、json、html、pdf、docx、pptx、xlsx），
+# 自动跳过符号链接、目录联接、浏览器登录资料和名字带凭据字样的文件；exclude 写相对文件夹的路径或通配符。
+# 抽 PDF、Word、PPT、Excel 文字要装 onestead[docs]。
+# shared_folders = [{key = "research", name = "调研资料", path = "<文件夹>", readers = ["<agent_key>"], exclude = ["<相对路径>"]}]
