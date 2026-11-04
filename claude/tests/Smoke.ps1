@@ -230,6 +230,20 @@ Set-Content -LiteralPath (Join-Path $Outbox 'REPORT.md') -Value '中文交卷完
     Assert-That ($result.Output.Contains('state=process-gone-without-ready')) 'Missing process without READY was not reported.'
     Pass 'Wait-Delivery terminal marker and process-gone without READY'
 
+    $pyWait = Join-Path $sandbox 'bin/wait_delivery.py'
+    function Invoke-PyWait([string]$Arguments, [int]$ExpectedExit) {
+        Invoke-Pwsh @('-NoProfile', '-Command', "python -X utf8 `"$pyWait`" $Arguments --interval-seconds 1; exit `$LASTEXITCODE") $ExpectedExit
+    }
+    $result = Invoke-PyWait "--job-dir `"$outbox`" --timeout-minutes 0.5" 0
+    Assert-That ($result.Output.Contains('state=ready ready_status=completed')) 'Python watcher missed READY.'
+    $result = Invoke-PyWait "--job-dir `"$empty`" --timeout-minutes 0" 2
+    Assert-That ($result.Output.Contains('state=timeout')) 'Python watcher timeout was not reported.'
+    $result = Invoke-PyWait "--job-dir `"$noReady`" --terminal-file `"$exitMarker`" --timeout-minutes 0.5" 3
+    Assert-That ($result.Output.Contains('state=ended-without-ready')) 'Python watcher missed the end marker.'
+    $result = Invoke-PyWait "--job-dir `"$noReady`" --process-id $($unfinished.host_pid) --timeout-minutes 0.5" 4
+    Assert-That ($result.Output.Contains('state=process-gone-without-ready')) 'Python watcher missed the process exit.'
+    Pass 'wait_delivery.py READY, timeout, terminal marker and process-gone'
+
     # A wrapper passes real arrays; pwsh -File does not accept array-valued CLI parameters.
     $manyWrapper = Join-Path $tempRoot 'wait many wrapper.ps1'
     @'

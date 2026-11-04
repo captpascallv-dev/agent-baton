@@ -12,7 +12,7 @@
 Claude(Lead) ──写任务卡──> Dispatch.ps1 ──后台隐藏进程──> agent CLI（干活，写交卷目录）
      ▲                                                          │
      │                                                  最后写 READY.json
-     └──── 唤醒 <── Wait-Delivery.ps1（纯本地文件检查，后台运行）<──┘
+     └──── 唤醒 <── wait_delivery.py（纯本地文件检查，后台运行）<──┘
 ```
 
 - 派单后 Claude 结束本轮，由本地守候等待交卷，不持续调用模型轮询。
@@ -24,7 +24,8 @@ Claude(Lead) ──写任务卡──> Dispatch.ps1 ──后台隐藏进程─�
 ```
 bin/Dispatch.ps1        派单：按 executors.json 组装命令，后台启动，输出 WATCH 命令
 bin/Run-Agent.ps1       后台进程里实际执行 agent CLI，写 agent.log / exit_code.txt
-bin/Wait-Delivery.ps1   守候：READY.json→0；原生结束标记但无READY→3；进程消失但无READY→4；超时→2
+bin/wait_delivery.py   守候：READY.json→0；原生结束标记但无READY→3；进程消失但无READY→4；超时→2。用 Python 写，只靠标准库：Defender 挂死时 PowerShell 退不出，守候就叫不醒 Lead
+bin/Wait-Delivery.ps1   同样语义的 PowerShell 版，留给没装 Python 的机器
 bin/Wait-Many.ps1       多任务守候：任一交卷或执行者结束就退出
 bin/Pending.ps1         列出未交卷任务并给出重挂守候命令（跳过带 CLOSED.txt 的任务）
 executors.example.json  执行者配置样例（复制为 executors.json 后按需修改）

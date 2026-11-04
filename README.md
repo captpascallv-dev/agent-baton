@@ -89,7 +89,7 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
    └── 叫醒原会话 ◀── claude/ 守候 或 codex/ 插件（只看文件，不调模型）
 ```
 
-- **派活**用 `claude/`：Lead 写任务卡，`Dispatch.ps1` 启动执行者，`Wait-Delivery.ps1` 在交卷时退出，Claude Code 回到原会话。Codex App 里的 Lead 不走这套脚本，而是用 `codex/` 插件接收交卷通知。
+- **派活**用 `claude/`：Lead 写任务卡，`Dispatch.ps1` 启动执行者，`wait_delivery.py` 在交卷时退出，Claude Code 回到原会话。Codex App 里的 Lead 不走这套脚本，而是用 `codex/` 插件接收交卷通知。
 - **执行者只会 ACP** 时，把 `acp/acp_client.py` 当成启动命令，写进 `claude/executors.json`。任务卡仍然要求执行者把产物和 `READY.json` 写进交卷目录：ACP 客户端只负责跑协议，不代替交卷。
 - **不止一个 Lead** 时，加上 `mailbox/`。它不启动执行者，也不看 `READY.json`，只负责 Lead 之间的信。
 - **想随时看执行情况** 时，加上 [`watch/`](watch/)。它读取登记和进程身份，不派单，也不把进程结束或交卷当成业务验收。
@@ -309,6 +309,7 @@ Onestead 的数据仓库是一个独立的 git 仓库，内容全是 Markdown。
 - 执行者的 `timeout` 往往只杀外壳，子进程会残留空转。跑完按整棵进程树清理。
 - 任务卡里写明不建计划任务、不起常驻进程；需要“几点后再跑”的，由 Lead 到点另派。
 - 同时开几十个 agent 会话会拖慢甚至卡死桌面 App；按内存设个在跑上限。
+- 大量测试临时文件会拖垮 Windows Defender。我们遇到过引擎扫临时文件时挂死，之后所有 PowerShell 连启动都卡住，用 PowerShell 写的守候退不出，Lead 一晚上没被叫醒。守候因此改成了 Python。建议把测试临时目录和构建目录加进 Defender 排除项（要管理员权限，代价是这些目录不再实时扫描），值守脚本里也顺带查一下 PowerShell 能不能应答。
 
 **账号和额度**
 
@@ -319,6 +320,7 @@ Onestead 的数据仓库是一个独立的 git 仓库，内容全是 Markdown。
 
 - Windows PowerShell 5.1 读不带 BOM 的非 ASCII 脚本会解析错，脚本统一用 PowerShell 7 跑。
 - 脱离控制台的长跑脚本起子进程要加 `CREATE_NO_WINDOW`，否则会不停弹终端窗口。
+- Codex App 更新后打不开、部署日志报 `0x80073CF6` / `0x8007041C` 时，我们遇到的原因是它的沙箱服务卡在“启动中”停不下来，新版本替换不了。用管理员权限结束 `codex-windows-sandbox-service.exe`，再打开 App 就装上了。
 
 ## 本地离线检查
 

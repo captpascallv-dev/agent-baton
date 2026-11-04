@@ -124,5 +124,5 @@ if ($null -eq $proc) { throw 'Executor wrapper process did not start.' }
 } | ConvertTo-Json | Set-Content (Join-Path $jobDir 'job.json') -Encoding utf8
 
 "DISPATCHED JobId=$JobId executor=$Executor pid=$($proc.Id)"
-"WATCH: pwsh -NoProfile -File `"$PSScriptRoot/Wait-Delivery.ps1`" -JobDir `"$Outbox`" -ProcessId $($proc.Id) -TimeoutMinutes $watchMinutes -IntervalSeconds 20"
+"WATCH: python -X utf8 `"$PSScriptRoot/wait_delivery.py`" --job-dir `"$Outbox`" --process-id $($proc.Id) --timeout-minutes $watchMinutes --interval-seconds 20"
 "NOTE: Run WATCH as a background command, then end the turn. Exit 2 (timeout) while pid is alive: re-arm WATCH."
