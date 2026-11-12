@@ -1702,7 +1702,7 @@ public sealed partial class MailboxCollector : ICollector
         }
 
         FileInfo info;
-        try { info = new FileInfo(normalized); }
+        try { info = new FileInfo(StudioReadBoundary.Check(normalized)); }
         catch (Exception ex)
         {
             NoteJobIssue(issues, normalized, "stat_failed", ex.GetType().Name + ": " + ex.Message, observedAt, jobKey, kind);
@@ -1738,7 +1738,7 @@ public sealed partial class MailboxCollector : ICollector
             {
                 // Stat is only an early rejection. Bound the read itself against growth/replace races.
                 _contentReads.Add(normalized);
-                await using var stream = new FileStream(normalized, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, true);
+                await using var stream = new FileStream(StudioReadBoundary.Check(normalized), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, true);
                 // The byte budget is a read limit, not an allocation per small JSON file.
                 // Reuse one buffer across serial reads while keeping the max+1 growth check.
                 var limit = maxBytes + 1;
@@ -1855,7 +1855,7 @@ public sealed partial class MailboxCollector : ICollector
 
         try
         {
-            var info = new FileInfo(normalized);
+            var info = new FileInfo(StudioReadBoundary.Check(normalized));
             documents.Add(new RawDocument(
                 id, KindAdapterResultStat, normalized,
                 new JsonObject
@@ -1914,7 +1914,7 @@ public sealed partial class MailboxCollector : ICollector
             if (!seen.Add(id)) return;
             try
             {
-                var info = new FileInfo(path);
+                var info = new FileInfo(StudioReadBoundary.Check(path));
                 if (!info.Exists) return;
                 documents.Add(new RawDocument(
                     id, "outbox_file", path,
@@ -2200,7 +2200,7 @@ public sealed partial class MailboxCollector : ICollector
         if (!seen.Add(id) || !File.Exists(path)) return;
         try
         {
-            var info = new FileInfo(path);
+            var info = new FileInfo(StudioReadBoundary.Check(path));
             if (!info.Exists) return;
             documents.Add(new RawDocument(
                 id,
@@ -2238,7 +2238,7 @@ public sealed partial class MailboxCollector : ICollector
     {
         try
         {
-            var info = new DirectoryInfo(path);
+            var info = new DirectoryInfo(StudioReadBoundary.Check(path));
             return info.Exists && info.Attributes.HasFlag(FileAttributes.ReparsePoint);
         }
         catch (Exception)

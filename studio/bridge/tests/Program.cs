@@ -6,6 +6,7 @@ using CliWatch.Contracts;
 // Synthetic inputs only. Caller supplies a dedicated fixture directory; no real sources.
 var fixtureRoot = Path.GetFullPath(args.Single());
 Directory.CreateDirectory(fixtureRoot);
+if (OperatingSystem.IsMacOS()) StudioReadBoundary.AllowedRoot = fixtureRoot;
 await new BoundaryTests(fixtureRoot).Run();
 
 sealed class BoundaryTests(string root)

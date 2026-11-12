@@ -1160,6 +1160,7 @@ public sealed class CliWatchProjector : IProjector
     static bool LooksLikePath(string path)
     {
         var t = path.Trim();
+        if (OperatingSystem.IsMacOS()) return t.StartsWith("/", StringComparison.Ordinal) && Path.IsPathFullyQualified(t);
         return t.Length >= 3 && char.IsLetter(t[0]) && t[1] == ':' && (t[2] == '\\' || t[2] == '/');
     }
 

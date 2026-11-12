@@ -80,3 +80,38 @@ pwsh -NoProfile -File watch/tests/Smoke.ps1
 ## 来源和许可证
 
 本目录来自一个独立维护的本机 Telephone cockpit UI fork，保留其 [MPL-2.0](LICENSE)。公开副本采用通用命名和配置，未携带旧仓历史、个人运行记录或编译依赖。来源及修改说明见 [NOTICE.txt](NOTICE.txt)，保留的 .NET 声明位于 `src/licenses/`。
+
+## macOS 源码版（Intel 实测）
+
+Mac 使用普通 SwiftUI 窗口；与 Windows 复用 Contracts、Collection、Normalization、
+Projection 和 CurrentList，不重新判断执行、交卷或验收。WPF 成品包仍仅支持 Windows。
+需要 .NET 8 SDK、Swift/macOS 工具链；不安装服务或登录项。
+
+```sh
+python3 guards/capped_run.py --mem-gb 1.5 --timeout 300 --log /tmp/watch-build.log -- \
+  dotnet build watch/src/CliWatch.Cli -c Release -m:1 -p:UseSharedCompilation=false
+python3 guards/capped_run.py --mem-gb 1 --timeout 300 --log /tmp/watch-ui-build.log -- \
+  sh watch/macos/build.sh
+```
+
+先在一个明确允许读取的目录中准备与 `config/default.json` 同格式的配置，只填该范围
+内的公开派单/交卷元数据。然后在两个终端分别运行采集和窗口：
+
+```sh
+dotnet watch/src/CliWatch.Cli/bin/Release/net8.0/CliWatch.Cli.dll \
+  --config /absolute/task-area/watch.json --allowed-root /absolute/task-area \
+  --output "$HOME/Library/Application Support/AgentBatonWatch/watch-snapshot.json" --watch
+watch/macos/build/CliWatchMac.app/Contents/MacOS/CliWatchMac
+```
+
+`--once` 只采一轮；`--demo --output-dir /tmp/watch-demo` 生成明确标识的离线样例。
+默认无配置时输出未知，不自动加入任何私人信箱或会话目录。自定义配置不会自动读取
+默认模板的 `${REPOSITORY_ROOT}`；请写自己的绝对路径。输出必须与输入范围独立。
+只允许显式范围内元数据，间接路径每次读取前复核，任意符号链接拒绝；该约束不是对恶意
+并发写入者的安全沙箱。Mac 当前不支持 Grok 私有活动源、自定义发现规则、原生会话/
+当前范围文件等额外来源，缺口保持未知。
+
+Mac 仅枚举已登记 runner 出生身份匹配的子进程；不扫描全机命令行，不读取聊天正文。
+`ps` 对含空格参数的分界不保证，不能精确识别时保持未知；IO 活动计数未提供。
+窗口每 5 秒读共享 JSON，超过 60 秒未更新会提示过期。置顶/折叠、任务导航、便携包和
+Windows UI 偏好尚未移植。截图和窗口说明见 [macOS UI](macos/README.md)。

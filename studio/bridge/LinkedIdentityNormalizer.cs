@@ -11,9 +11,11 @@ namespace AiMoeStudio.Bridge;
 /// </summary>
 public sealed class LinkedIdentityNormalizer(INormalizer inner) : INormalizer
 {
-    readonly Dictionary<string, Registration> _registrations = new(StringComparer.OrdinalIgnoreCase);
-    readonly Dictionary<string, string> _acceptedTargets = new(StringComparer.OrdinalIgnoreCase);
-    readonly HashSet<string> _changedLinks = new(StringComparer.OrdinalIgnoreCase);
+    static StringComparer PathComparer => OperatingSystem.IsMacOS() ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
+    static StringComparison PathComparison => OperatingSystem.IsMacOS() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+    readonly Dictionary<string, Registration> _registrations = new(PathComparer);
+    readonly Dictionary<string, string> _acceptedTargets = new(PathComparer);
+    readonly HashSet<string> _changedLinks = new(PathComparer);
 
     public FactBatch Normalize(CollectionBatch batch) => Reconcile(inner.Normalize(batch));
 
@@ -22,8 +24,8 @@ public sealed class LinkedIdentityNormalizer(INormalizer inner) : INormalizer
         var facts = batch.Facts;
         var jobs = facts.Where(f => f.Kind == "mailbox_job").Select(Registration.Read)
             .Where(job => job is not null).Cast<Registration>().ToList();
-        var duplicates = jobs.GroupBy(job => job.Identity, StringComparer.OrdinalIgnoreCase)
-            .Where(group => group.Count() > 1).Select(group => group.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var duplicates = jobs.GroupBy(job => job.Identity, PathComparer)
+            .Where(group => group.Count() > 1).Select(group => group.Key).ToHashSet(PathComparer);
         foreach (var job in jobs.Where(job => !duplicates.Contains(job.Identity)))
         {
             if (_registrations.TryGetValue(job.Identity, out var old)
@@ -38,14 +40,14 @@ public sealed class LinkedIdentityNormalizer(INormalizer inner) : INormalizer
         // templates, never old process/READY facts; prune roots removed from config.
         var roots = facts.Where(f => f.Kind == "mailbox_root").Select(f => Root(f) ?? f.Links.GetValueOrDefault("location"))
             .Where(root => !string.IsNullOrWhiteSpace(root)).Select(root => CanonicalPath(root!))
-            .Where(root => root is not null).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .Where(root => root is not null).ToHashSet(PathComparer);
         if (roots.Count > 0)
             foreach (var key in _registrations.Where(pair => !roots.Contains(pair.Value.Root)).Select(pair => pair.Key).ToArray())
                 _registrations.Remove(key);
 
-        var observed = jobs.Select(job => job.Identity).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var observed = jobs.Select(job => job.Identity).ToHashSet(PathComparer);
         var proposed = new List<Link>();
-        var conflicts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var conflicts = new HashSet<string>(PathComparer);
         foreach (var source in _registrations.Values)
         {
             var nativeId = Text(source.Fact, "native_mailbox_job_id");
@@ -69,12 +71,12 @@ public sealed class LinkedIdentityNormalizer(INormalizer inner) : INormalizer
             }
             proposed.Add(new Link(source, target));
         }
-        foreach (var group in proposed.GroupBy(link => link.Target.Identity, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
+        foreach (var group in proposed.GroupBy(link => link.Target.Identity, PathComparer).Where(group => group.Count() > 1))
             foreach (var link in group) conflicts.Add(link.Source.Identity);
         var links = proposed.Where(link => !conflicts.Contains(link.Source.Identity)).ToArray();
         if (links.Length == 0) return AddConflicts(batch, conflicts);
 
-        var byMember = new Dictionary<string, Link>(StringComparer.OrdinalIgnoreCase);
+        var byMember = new Dictionary<string, Link>(PathComparer);
         foreach (var link in links)
         {
             byMember[link.Source.Identity] = link;
@@ -82,7 +84,7 @@ public sealed class LinkedIdentityNormalizer(INormalizer inner) : INormalizer
             _acceptedTargets[link.Source.Identity] = link.Target.Identity;
         }
         var output = new List<SourceFact>();
-        var resolvedReadyLocations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var resolvedReadyLocations = new HashSet<string>(PathComparer);
         foreach (var fact in facts)
         {
             var identity = Identity(fact);
@@ -195,11 +197,11 @@ public sealed class LinkedIdentityNormalizer(INormalizer inner) : INormalizer
         return batch with { Issues = issues };
     }
 
-    static bool SameIdentity(string? left, string right) => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+    static bool SameIdentity(string? left, string right) => string.Equals(left, right, PathComparison);
     static bool IsMember(SourceFact fact, Link link) => SameIdentity(Identity(fact), link.Source.Identity) || SameIdentity(Identity(fact), link.Target.Identity);
     static bool Positive(SourceFact fact, string key) => long.TryParse(Scalar(fact.Values, key), out var value) && value > 0;
     static bool IsLiveBinding(SourceFact fact) => Flag(fact, "cli_alive") || Flag(fact, "wrapper_alive");
-    static bool SamePath(string? left, string? right) => CanonicalPath(left) is { } full && full.Equals(CanonicalPath(right), StringComparison.OrdinalIgnoreCase);
+    static bool SamePath(string? left, string? right) => CanonicalPath(left) is { } full && full.Equals(CanonicalPath(right), PathComparison);
     static string? CanonicalPath(string? value)
     {
         if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value)) return null;

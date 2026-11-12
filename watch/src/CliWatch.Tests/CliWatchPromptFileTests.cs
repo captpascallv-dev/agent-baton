@@ -102,7 +102,10 @@ public sealed class CliWatchPromptFileTests
     [InlineData("prefix-flag")]
     [InlineData("outside-dispatch")]
     [InlineData("duplicate")]
+#if !MAC_PORT_TESTS
+    // Windows junction creation requires cmd.exe; explicitly absent from Mac suite.
     [InlineData("reparse")]
+#endif
     public async Task Broken_prompt_identity_does_not_bind(string broken)
     {
         using var world = new World();

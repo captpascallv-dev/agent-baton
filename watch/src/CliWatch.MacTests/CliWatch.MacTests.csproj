@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <DefineConstants>$(DefineConstants);MAC_PORT_TESTS</DefineConstants>
+    <!-- Retain the existing friend-assembly contract for internal test counters. -->
+    <AssemblyName>CliWatch.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <ProjectReference Include="../CliWatch.Contracts/CliWatch.Contracts.csproj" />
+    <ProjectReference Include="../CliWatch.Collection/CliWatch.Collection.csproj" />
+    <ProjectReference Include="../CliWatch.Normalization/CliWatch.Normalization.csproj" />
+    <ProjectReference Include="../CliWatch.Projection/CliWatch.Projection.csproj" />
+    <Compile Include="../CliWatch.Tests/*.cs" Link="Tests/%(Filename)%(Extension)" />
+    <Compile Include="../CliWatch.Views/*.cs" Exclude="../CliWatch.Views/*.xaml.cs" Link="Presentation/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

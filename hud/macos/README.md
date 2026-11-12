@@ -30,3 +30,5 @@ for diagnostics. Capture permission is still required; do not bypass denial.
 Capture the two regions separately; do not take a full-screen shot or a bounding
 rectangle that includes unrelated menu-bar items or other app windows.
 `--panel` remains available as an independent own-window preview fallback.
+
+界面中文文案与 Windows 版本保持一致：剩余额度、距离重置、重置时间未提供、不可用、已过期、未知。窗口名称仅做展示翻译，不改变快照或重新推断重置周期。

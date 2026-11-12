@@ -293,7 +293,7 @@ public sealed class FileCollector : ICollector
         FileInfo info;
         try
         {
-            info = new FileInfo(normalized);
+            info = new FileInfo(WatchReadBoundary.Check(normalized));
         }
         catch (Exception ex)
         {

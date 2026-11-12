@@ -8,10 +8,10 @@ namespace AiMoeStudio.Bridge;
 
 public static class LinkedIdentitySelfTest
 {
-    const string SlotRoot = @"C:\studio-fixture\slot-mailbox";
-    const string NativeRoot = @"C:\studio-fixture\native-mailbox";
-    const string Workspace = @"F:\studio-fixture\work";
-    const string Outbox = @"F:\studio-fixture\work\outbox";
+    static readonly string SlotRoot = FixturePath(@"C:\studio-fixture\slot-mailbox");
+    static readonly string NativeRoot = FixturePath(@"C:\studio-fixture\native-mailbox");
+    static readonly string Workspace = FixturePath(@"F:\studio-fixture\work");
+    static readonly string Outbox = FixturePath(@"F:\studio-fixture\work\outbox");
     const string Native192 = "32d81ec8-3691-4007-8d2d-a6b15821f6d8";
     const string Native194 = "74f67825-2f40-425e-8bcc-7ef61bc8695b";
     const string OtherNative = "be7280d8-1e51-41f3-ae10-7a6cdb717062";
@@ -19,6 +19,9 @@ public static class LinkedIdentitySelfTest
     const string Slot194 = "notes-app-review-closeout-cost-r194";
     static readonly DateTimeOffset At = DateTimeOffset.Parse("2026-10-22T12:00:00+08:00");
     static int _checks;
+    static string FixturePath(string windowsPath) => OperatingSystem.IsMacOS()
+        ? "/studio-fixture/" + windowsPath[3..].Replace('\\', '/')
+        : windowsPath;
 
     public static void Run()
     {
@@ -46,17 +49,19 @@ public static class LinkedIdentitySelfTest
         Require(activeRow.Phase == CliWatchStatus.RunningActive && CurrentList.IsDefaultCurrent(activeRow), "R194 actual running state wins over unknown alias");
         Require(activeRow.WorkItems.Count == 1 && !StatusLanguage.IsHistoricalWork(activeRow.WorkItems[0]), "one current work");
 
+        if (OperatingSystem.IsMacOS())
+            AssertSeparate(ChangeJob(Returned(), Native192, values => values["workspace"] = Workspace.ToUpperInvariant()), 2, "Mac path case must not merge distinct identities");
         AssertSeparate(ChangeJob(Returned(), Slot192, values => values.Remove("native_mailbox_job_id")), 2, "missing link");
         AssertSeparate(ChangeJob(Returned(), Slot192, values => values["native_mailbox_job_id"] = OtherNative), 2, "wrong UUID");
-        AssertSeparate(ChangeJob(Returned(), Native192, values => values["outbox"] = @"F:\studio-fixture\other\outbox"), 2, "wrong outbox");
-        AssertSeparate(ChangeJob(Returned(), Native192, values => values["workspace"] = @"F:\studio-fixture\other"), 2, "wrong workspace");
+        AssertSeparate(ChangeJob(Returned(), Native192, values => values["outbox"] = FixturePath(@"F:\studio-fixture\other\outbox")), 2, "wrong outbox");
+        AssertSeparate(ChangeJob(Returned(), Native192, values => values["workspace"] = FixturePath(@"F:\studio-fixture\other")), 2, "wrong workspace");
         AssertSeparate(ChangeJob(Returned(), Slot192, values => values["native_job_id"] = OtherNative), 2, "conflicting explicit UUID");
         AssertSeparate(ChangeJob(Returned(), Native192, values => values["directory_identity_conflict"] = true), 2, "native directory conflict");
         AssertSeparate(ChangeJob(Returned(), Native192, values => values["attempt_id"] = "2", rekey: true), 2, "different attempt");
         var differentRounds = Returned().Append(Job(Native192, NativeRoot, "2")).ToArray();
         AssertSeparate(differentRounds, 2, "round 2 is not absorbed into round 1");
-        var duplicateTarget = Returned().Append(Root(@"C:\studio-fixture\another-native"))
-            .Append(Job(Native192, @"C:\studio-fixture\another-native", "1")).ToArray();
+        var duplicateTarget = Returned().Append(Root(FixturePath(@"C:\studio-fixture\another-native")))
+            .Append(Job(Native192, FixturePath(@"C:\studio-fixture\another-native"), "1")).ToArray();
         AssertSeparate(duplicateTarget, 3, "ambiguous native registration");
         var duplicateAlias = Returned().Append(Job("different-slot", SlotRoot, "1", Native192)).ToArray();
         AssertSeparate(duplicateAlias, 3, "two aliases claiming one native round");

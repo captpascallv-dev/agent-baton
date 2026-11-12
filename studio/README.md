@@ -301,3 +301,27 @@ To show running state for compatible external Codex CLI jobs, set both `codexCli
 This is a **non-commercial** fan project that credits every original creator. All characters are unofficial, with **no affiliation with or endorsement by** OpenAI, Anthropic, Google, Moonshot AI, xAI or DeepSeek. Brand names belong to their owners.
 
 If you are an original creator or a brand owner and have any concern about how your work is used, please open an issue and we will adjust or remove it promptly.
+
+## macOS：显式范围的真实采集模式
+
+Mac bridge 使用 .NET 8 和共享 Mac 进程探针，网页沿用现有研究室；Windows WPF/DLL
+路径不变。已验证的“真实模式”是实际读取本机公开派单元数据和真实假执行者进程，
+不是演示快照，也不代表调用了任何真实模型。
+
+1. 按 [bridge Mac 说明](bridge/README.md) 串行构建 bridge，已有前端依赖用
+   `npm --prefix studio ci --ignore-scripts`，再用护栏运行 `npm --prefix studio run build`。
+2. 在一个独立任务范围准备 `watch.json` 和 `studio.json`，显式填写 `allowedRoot`、
+   `cliWatchConfig`、`bridgeExecutable`、`cliWatchRuntimeDirectory`、`snapshotPath`。
+   配置及输出均在该允许范围内，但快照不能覆盖采集源或程序文件。
+3. `sh studio/start-studio.sh --config /absolute/task-area/studio.json`。
+   打开终端打印的 `http://127.0.0.1:端口`；Ctrl-C 只停止本次服务器及其桥接子进程。
+
+不读取默认 Codex/Claude 私人会话、额度或凭据。Mac 的额外 App/session runtime overlay
+关闭，因此全局代理活动等未获授权的来源显示未知，而非假装零/空闲。它不会修改原账本、
+发任务或联系模型。所有本次验证使用独立的假执行者，没有生产数据截图。
+
+`tools/mac-live-smoke.py` 可用真实 Dispatch 的假任务验证 running → delivered → history；
+`tools/mac-preview.swift` 是官方 WebKit 的 localhost-only、无持久浏览器资料预览工具，
+用于只截该测试窗口，不访问用户的浏览器标签。执行验证仍应套内存/时间护栏。
+
+Mac 视觉核验限制：独立 WKWebView QA 窗口两次未在 20 秒内回报页面加载完成，已停止自己的预览进程。没有取得研究室 Mac 窗口截图，不把 HTTP 返回正常当作页面视觉验收。`tools/mac-preview.swift` 是仅本机地址的可选诊断源码，不是交付的浏览器替代品。
