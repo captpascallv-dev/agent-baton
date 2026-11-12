@@ -151,14 +151,22 @@ pwsh -NoProfile -File ./tests/Smoke.ps1
 
 MIT，见仓库根目录 LICENSE。
 
-### macOS resource-guard lifecycle
+### macOS / Linux detached lifecycle
 
-Do not wrap only the short `Dispatch.ps1` invocation in `guards/capped_run.py`:
-on macOS the guard cleans up the process group when that foreground command
-exits, which can terminate the detached executor wrapper before it starts.
-Keep dispatch and its local waiter in the same guarded foreground lifetime;
-also cap the actual executor separately. A `READY.json` plus waiter exit 0
-proves delivery, not necessarily that the executor wrapper wrote its final
-`exit_code.txt` / `terminal.json`. Inspect these independently before reporting
-process cleanup as verified. Never automatically repeat a one-shot real-model
-test after an uncertain dispatch.
+POSIX dispatch uses Python's `start_new_session=True` and redirects stdin,
+stdout and stderr to the null device. The emitted PID is the actual
+`Run-Agent.ps1` process, not a launcher or shell proxy. Windows keeps its
+existing ShellExecute path. Python 3 (`python3`, or `python`) must be on PATH.
+
+On macOS, it is safe to wrap only `Dispatch.ps1` in `guards/capped_run.py`:
+the runner lives in a separate session and survives cleanup of the dispatcher's
+process group or terminal. **The detached executor is deliberately outside that
+caller's resource guard**; configure its own cap/timeout separately. Use the
+normal WATCH command to observe delivery, then inspect `exit_code.txt` and
+`terminal.json` independently for final process status. No automatic model
+retry is performed after a failed or uncertain dispatch.
+
+Offline regression: `python3 -m unittest discover -s claude/tests -p test_detached.py -v`
+(`PWSH_PATH` can select the installed shell). Tests cover dispatcher-only guard
+cleanup, caller-session termination, paths containing spaces/non-ASCII,
+actual host PID identity, READY delivery, watcher exit and terminal records.
