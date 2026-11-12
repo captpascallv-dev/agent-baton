@@ -91,3 +91,46 @@ Official troubleshooting reference reviewed:
 https://developers.openai.com/plugins/deploy/troubleshooting
 It recommends separating server/discovery/client issues; it does not establish
 an available Desktop reconnect command for this installation.
+
+## Authorized wake continuation, 2026-11-12 14:21–14:25 UTC
+The owner manually restarted the App again. New App process start was 14:21:16 UTC;
+Mac reattachment succeeded. The host reported codex_mail_wake ready at 14:23:00
+and 14:23:05. In the existing user-created standby conversation, supported App
+send/read APIs verified actual start_app_mailbox_watch and app_mailbox_status
+calls, followed by WAKE-C-ARMED. The project permit was enabled at 14:23:16.
+No additional executor dispatch or quota read occurred.
+
+Exactly one synthetic outbox READY was created at 14:23:29 UTC with marker
+MAC-C-WAKE-ONE. The receiver collected its snapshot, but its original-owner
+preflight failed at 14:23:30 with:
+
+`Official MCP rejection: {"code":-32603,"message":"Codex app tools pipe closed"}`
+
+The outcome is pending/read_unavailable, notificationAccepted=false and
+actualLeadContinuationVerified=false. No delivery claim, send intent, receipt,
+or MAC-C-WAKE-ACK was found. This is a real attempted wake blocked BEFORE send,
+not a successful wake and not an uncertain already-submitted notification.
+
+The same conversation successfully executed stop_app_mailbox_watch and status
+at 14:24:34, reporting watchEnabled=false. All registered pending/snapshot/state
+and the stopped permit remain intact; nothing was deleted or resent. The
+standby conversation remains idle. Installed plugin and configuration remain.
+
+### Diagnosis boundary and minimal reproduction
+The outer supported App read/send interface and plugin tool calls work. The
+failure is specifically the plugin's child official-tools adapter using its
+original host launch pipe during background read_thread preflight. Installation
+and initial configuration are no longer the blocker. This run observed one
+concrete closure; it does NOT prove a permanent host-wide outage or establish
+whether the pipe would recover on its own. The receiver released leadership.
+The implementation has rate-limited read-only recovery on the same original
+pipe, but restarting the watch could subsequently send this still-pending item,
+so it was not used as an unapproved retry after stopping.
+
+Reproduce only with a separately authorized test: installed 0.5.1, valid config,
+registered synthetic outbox, real original Lead starts project watch, finishes
+its turn, then a single READY is written. Compare native read_thread success
+with adapter preflight result. Investigate the official launch-pipe lifetime
+and adapter supported integration, without copying another thread's pipe,
+faking identity, reading private sessions, or bypassing App UI restrictions.
+No extra user restart or new conversation is justified by this evidence alone.
