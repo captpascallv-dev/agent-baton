@@ -510,12 +510,18 @@ public sealed partial class MailboxCollector : ICollector
         }
 
         var bindInputs = new List<JobBindInput>();
-        var registrationFiles = files.ToList();
+        // Directory enumeration is unspecified across filesystems. Stable ordering
+        // makes the bounded scan/rotation reproducible without reading extra content.
+        var registrationFiles = files.OrderBy(path => path, StringComparer.Ordinal).ToList();
         var currentFirst = new List<string>();
         var closeoutNext = new List<string>();
         var history = new List<string>();
         PartitionJobFiles(root, registrationFiles, live, currentFirst, closeoutNext, history);
         var pendingAdapters = new HashSet<string>(LivePromptAdapterIds(live), StringComparer.OrdinalIgnoreCase);
+        // Keep this round's registration-first policy after the last live match.
+        // Otherwise an early live item empties pendingAdapters and historical
+        // metadata consumes the budget before the remaining registrations are read.
+        var prioritizePromptRegistrations = pendingAdapters.Count > 0;
         var deferredEvidence = new List<RawDocument>();
         var stop = false;
 
@@ -622,9 +628,10 @@ public sealed partial class MailboxCollector : ICollector
 
             if (jobDoc is null) return;
             var adapterId = LivePromptAdapterId(jobDoc);
-            // Registration content is already budgeted. While a live prompt adapter is still
-            // unmatched, keep historical extra files behind that registration's identity reads.
-            if (canDeferEvidence && pendingAdapters.Count > 0 && (adapterId is null || !pendingAdapters.Contains(adapterId)))
+            // Registration content is already budgeted. A live prompt adapter's
+            // identity reads are immediate; all other extra files remain behind
+            // the entire registration pass, even once the live match was found.
+            if (canDeferEvidence && prioritizePromptRegistrations && (adapterId is null || !pendingAdapters.Contains(adapterId)))
             {
                 deferredEvidence.Add(jobDoc);
                 return;
