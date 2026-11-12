@@ -118,7 +118,7 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 | 组件 | macOS | 说明 |
 | --- | --- | --- |
 | `method/` 工作流方法 | 适用 | 纯文档 |
-| `claude/` 派活和叫醒、`mailbox/` Lead 之间的信箱 | Mac 离线实测通过 | PowerShell 7.7：claude 12项、mailbox 8项；假执行者完整交卷，真实模型派活尚未执行 |
+| `claude/` 派活和叫醒、`mailbox/` Lead 之间的信箱 | Mac 离线实测通过 | PowerShell 7.7：claude 12项、mailbox 8项；假执行者完整交卷；真实派发尝试1次但后台runner未启动成功，未产生交卷，见 MAC_PORT_B_REPORT.md |
 | `acp/` ACP 客户端 | Mac 离线实测通过 | Intel macOS 15.7：mock smoke 退出 0；非真实模型调用 |
 | `tools/extract_dialogue.py` | 适用 | 纯 Python |
 | `onestead/` | Mac 离线分片实测通过 | 1312个收集节点均已覆盖；首跑限时后续跑尾片，路径fixture修复后模块7项重跑通过；网页打开本机应用/目录仍不可用 |
