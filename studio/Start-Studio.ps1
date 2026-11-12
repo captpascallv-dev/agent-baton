@@ -4,6 +4,7 @@
     [switch]$Demo
 )
 $ErrorActionPreference = 'Stop'
+if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'Start-Studio.ps1 is Windows-only (COM, node.exe and Windows TCP cmdlets). Use the documented Node server entry point on macOS/Linux.' }
 $studioRoot = $PSScriptRoot
 try {
 if ($Demo) {

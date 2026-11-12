@@ -111,7 +111,16 @@ if ($IsWindows) {
     foreach ($arg in @('-NoProfile', '-File', $runner, '-JobDir', $jobDir)) { [void]$startInfo.ArgumentList.Add($arg) }
     $proc = [Diagnostics.Process]::Start($startInfo)
 } else {
-    $proc = Start-Process -FilePath 'pwsh' -ArgumentList @('-NoProfile', '-File', "`"$runner`"", '-JobDir', "`"$jobDir`"") -PassThru
+    # A true POSIX session boundary survives caller terminal/process-group cleanup.
+    # Python redirects all three standard handles; it returns Run-Agent's actual PID.
+    $python = Get-Command python3 -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $python) { $python = Get-Command python -ErrorAction SilentlyContinue | Select-Object -First 1 }
+    if (-not $python) { throw 'Python 3 is required for POSIX detached dispatch.' }
+    $shell = (Get-Command pwsh -ErrorAction Stop).Source
+    $launcher = Join-Path $PSScriptRoot 'start_detached.py'
+    $pidText = & $python.Source $launcher --cwd $Workspace -- $shell -NoProfile -File $runner -JobDir $jobDir
+    if ($LASTEXITCODE -ne 0 -or "$pidText" -notmatch '^[1-9][0-9]*$') { throw 'Detached executor wrapper failed to start.' }
+    $proc = [pscustomobject]@{ Id = [int]$pidText }
 }
 if ($null -eq $proc) { throw 'Executor wrapper process did not start.' }
 
