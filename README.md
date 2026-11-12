@@ -118,11 +118,11 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 | 组件 | macOS | 说明 |
 | --- | --- | --- |
 | `method/` 工作流方法 | 适用 | 纯文档 |
-| `claude/` 派活和叫醒、`mailbox/` Lead 之间的信箱 | Mac 离线实测通过 | PowerShell 7.7：claude 12项、mailbox 8项；假执行者完整交卷；主号 gpt-6.1-sol / xhigh 真实派活 1 次交卷、waiter 退出 0；POSIX 新会话脱离已修，派活单独套护栏及调用方进程组退出两项离线回归通过；修后真实派活未复测 |
+| `claude/` 派活和叫醒、`mailbox/` Lead 之间的信箱 | Mac 离线实测通过 | PowerShell 7.7：claude 12项、mailbox 8项；假执行者完整交卷；主号 gpt-6.1-sol / xhigh 真实派活 1 次交卷、waiter 退出 0；POSIX 新会话脱离已修，派活单独套护栏及调用方进程组退出两项离线回归通过；修后真实派活一次通过：waiter及terminal均exit0 |
 | `acp/` ACP 客户端 | Mac 离线实测通过 | Intel macOS 15.7：mock smoke 退出 0；非真实模型调用 |
 | `tools/extract_dialogue.py` | 适用 | 纯 Python |
 | `onestead/` | Mac 离线分片实测通过 | 1312个收集节点均已覆盖；首跑限时后续跑尾片，路径fixture修复后模块7项重跑通过；网页打开本机应用/目录仍不可用 |
-| `codex/` Codex App 叫醒插件 | Mac 离线实测通过；真实唤醒未测 | 36/36；官方 App tools 前提只读核实；真实插件安装/重启/唤醒待本人授权，未改 App 设置 |
+| `codex/` Codex App 叫醒插件 | Mac 离线实测通过；真实唤醒尝试受阻 | 36/36；插件安装、重载和真实 start/status 成功；唯一 READY 预检被官方 `Codex app tools pipe closed` 阻挡，未发送或续接，已停测试守候 |
 | `studio/` 研究室 | Mac 离线测试通过；真实模式未测 | `test:live` 29/29，假执行者与本地 HTTP；不能据此宣称真实采集器可用 |
 | `watch/` 执行观察窗 | 需要重新做 | WPF，只支持 Windows |
 | `hud/` 额度 HUD | Mac 版已做，Codex 主额度实测通过 | SwiftUI 菜单栏应用 + 与 Windows 共用数据层的命令行入口 `CodexUsageHud.Cli`；Intel Mac 用主号真实读取 1 次，与 Windows HUD 和 App 显示一致；其余槽位默认关闭，会话层级和 token 统计未移植；Windows/WPF 测试套只在 Windows 跑 |
@@ -131,7 +131,7 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 
 一句话：在 macOS 上，“写卡 → 派活 → 等交卷 → 被叫醒 → Lead 之间写信 → 记进 Onestead”主线的离线 mock 已在 Intel Mac 实测；真实模型派活已交卷 1 次，App 唤醒尚未验证；三个“看得见”的窗口里，额度 HUD 有了 Mac 菜单栏版，研究室能开演示模式，执行观察窗还只有 Windows 版；两道护栏已有 Mac 分支，采样上限和文件回收的限制见各自文档。
 
-> **macOS in one line:** offline mock dispatch/wake, mailbox, ACP and plugin checks pass on Intel Mac with PowerShell 7; one real model dispatch delivered, App wake remains untested; the quota HUD has a macOS menu-bar version; the studio demo runs anywhere Node runs; the studio live mode and the execution window remain Windows-only. The guards have Mac branches: sampled RSS is not a hard cap, and native trash fails closed. See component reports for tested versus untested scope.
+> **macOS in one line:** offline mock dispatch/wake, mailbox, ACP and plugin checks pass on Intel Mac with PowerShell 7; one real model dispatch delivered, App wake was attempted but blocked before send by the official tools pipe; the quota HUD has a macOS menu-bar version; the studio demo runs anywhere Node runs; the studio live mode and the execution window remain Windows-only. The guards have Mac branches: sampled RSS is not a hard cap, and native trash fails closed. See component reports for tested versus untested scope.
 
 ---
 

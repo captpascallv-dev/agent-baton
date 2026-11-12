@@ -44,6 +44,19 @@ export MAIL_WAKE_CONFIG="$(realpath ../wake-demo/config.json)"
 
 普通 stdio 入口也可用：`node codex/plugin/server.mjs --config /your/config.json`。普通终端没有宿主 pipe 时只保留状态，不伪造宿主发送。
 
+## Desktop first-load preparation
+
+Before the Desktop host first loads the MCP server, create its complete explicit
+configuration with a verified existing Lead/coordinator ID. Installation alone
+does not provide those values. The service validates configuration before the
+MCP initialize response, so missing required values can appear in the host as
+`connection closed: initialize response`. Validate configuration first, then use
+the host's supported reconnect/reload workflow. A successful standalone
+initialize/tools-list check proves server startup only, not the Desktop launch
+pipe, caller identity, watcher authorization or actual Lead continuation. Do not
+read private session files or fabricate host metadata to work around a failed
+host connection.
+
 ## 可运行的默认账本
 
 以下命令在仓库根执行。先创建 `../wake-demo/outbox`；`YOUR_LEAD_THREAD_ID` 替换为真正的收件 Lead ID。将配置例子复制为 `../wake-demo/config.json`；其 `./mailbox`/`./receiver-state` 指这个目录下的两个根。
