@@ -31,8 +31,8 @@ Only own app content/status button captured; no desktop/private account content.
 - [Light status button](hud/docs/images/mac-hud-menubar-demo-light.png)
 - [Dark status button](hud/docs/images/mac-hud-menubar-demo-dark.png)
 
-## Explicit gaps / approval boundary
-- NO actual Codex dispatch, account/rateLimits/read invocation, or comparison with live Codex App quota was performed. Owner's direct approval is still required for these. No model quota was intentionally consumed by these tests.
+## Explicit gaps / approval boundary (original offline checkpoint)
+- At the original offline checkpoint, no actual Codex dispatch or account/rateLimits/read invocation was performed. See the subsequently authorized one-shot validation below.
 - Existing Windows/WPF harness was NOT executed. Its project targets net8.0-windows and references the WPF App, with UI/Windows APIs mixed into the executable suite. New portable CLI tests are additional contracts, not a claim that the old suite passed on Mac. Full extraction of those tests is a separate uncompleted task.
 - No login/logout/auth-file access, network/VPN/security-setting edits, Windows code changes or other repository edits. No autostart installation or production snapshot was activated.
 - The SDK's standard first-run output reported an untrusted ASP.NET development certificate generated automatically. No trust command was run; this was reported to the owner coordinator. Later commands set DOTNET_GENERATE_ASPNET_CERTIFICATE=false. No existing certificates were removed.
@@ -179,3 +179,28 @@ All following cases remain unexecuted here because the existing runner is Window
 - `grok_401_retries_after_refresh`
 - `grok_login_stamp_uses_auth_file_not_directory`
 - `grok_stable_login_keeps_quota_across_reset`
+
+## Owner-authorized one-shot validation, 2026-11-12
+
+The owner subsequently explicitly approved one tiny dispatch using the Mac main account with `gpt-6.1-sol`, reasoning `xhigh`, Fast off, and one live quota read plus App comparison. No visible sidebar conversation was created.
+
+### Single dispatch attempt: FAILED before observed executor start
+- CLI help/version checked: bundled `codex-cli 0.167.0-alpha.4.1`.
+- Exactly ONE call to `Dispatch.ps1`, executor configured for `codex exec --ephemeral -m gpt-6.1-sol -c model_reasoning_effort="xhigh" -c service_tier="default" -s workspace-write`, isolated temporary workspace/outbox, no other repository access. Executor wrapped in capped_run 1.5GB/180s. Task: create one tiny hello.txt, REPORT.md, then READY.json.
+- Dispatch itself returned 0 and DISPATCHED. However its detached PowerShell wrapper disappeared before writing owner.json, agent.log, or terminal.json. No Codex process start or model response was observed; no output files or READY.json appeared.
+- Local waiter ended 4, `process-gone-without-ready`, 5.2s/0.01GB. A previous waiter was stopped and replaced with the PID-aware waiter only; this was NOT another dispatch or model call.
+- Concrete runner interaction: macOS capped_run always kills its process group when the foreground command exits. Wrapping the short Dispatch command alone therefore conflicts with its deliberately detached worker. The absence of the worker's initial owner marker is consistent with cleanup before its startup. This is a test-harness integration failure, not demonstrated model/auth failure.
+- No second dispatch was attempted. A future authorized retry should keep Dispatch AND the watcher inside one outer capped lifetime, with the executor's own cap retained. Do not claim a successful real dispatch from the initial DISPATCHED line.
+
+### Exactly one live quota read: PASS
+- Command: capped_run (1GB/60s) -> new CLI `--live --once --codex <bundled CLI> --output-dir <task-local snapshot directory>`.
+- Exit 0, 4.8s, sampled peak 0.08GB. The shared Core issued one `account/rateLimits/read` request.
+- Observation timestamp: **2026-11-12 13:08:33 UTC** (21:08:33 Taipei).
+- Primary slot `ok`; one returned 10080-minute window, **88% remaining**, reset **2026-11-18 17:43:55 UTC** (Nov 19 01:43:55 Taipei). Other five slots disabled. No short window was returned in this serialized snapshot; none is invented.
+- Existing quota_pace consumed this same snapshot, exit 0, displayed 88.0% and the matching reset time. It did not request fresh quota.
+- Snapshot remained outside the repository. No token, account, email, private path, or raw account response was committed.
+
+### App comparison: BLOCKED, not verified
+Computer Use explicitly refused the App with: `Computer Use is not allowed to use the app 'com.openai.codex' for safety reasons.` No alternate screenshot, AppleScript, or UI access route was used to bypass that refusal. Therefore numerical agreement with the App is NOT established. A user-provided App quota screenshot would allow comparison with the timestamped read above.
+
+Overall status remains PARTIAL: live read works; real dispatch delivery and App parity do not pass. Original Windows/WPF test gap also remains. No repeated model dispatch or repeated quota read was made.
