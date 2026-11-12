@@ -150,3 +150,16 @@ pwsh -NoProfile -File ./tests/Smoke.ps1
 ## License
 
 MIT，见仓库根目录 LICENSE。
+
+### macOS resource-guard lifecycle
+
+Do not wrap only the short `Dispatch.ps1` invocation in `guards/capped_run.py`:
+on macOS the guard cleans up the process group when that foreground command
+exits, which can terminate the detached executor wrapper before it starts.
+Keep dispatch and its local waiter in the same guarded foreground lifetime;
+also cap the actual executor separately. A `READY.json` plus waiter exit 0
+proves delivery, not necessarily that the executor wrapper wrote its final
+`exit_code.txt` / `terminal.json`. Inspect these independently before reporting
+process cleanup as verified. See `MAC_PORT_B_REPORT.md` for the bounded live
+smoke result and remaining exit-record limitation. Never automatically repeat
+a one-shot real-model test after an uncertain dispatch.
