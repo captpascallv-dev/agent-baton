@@ -1,3 +1,5 @@
+param([string]$Filter)
+
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
@@ -9,5 +11,7 @@ $testProject = Join-Path $projectRoot 'tests\CodexUsageHud.Tests\CodexUsageHud.T
 
 & $dotnet build $testProject -c Release --nologo
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-& $dotnet run --project $testProject -c Release --no-build --no-restore
+$testArguments = @()
+if ($Filter) { $testArguments = @('--filter', $Filter) }
+& $dotnet run --project $testProject -c Release --no-build --no-restore -- @testArguments
 exit $LASTEXITCODE

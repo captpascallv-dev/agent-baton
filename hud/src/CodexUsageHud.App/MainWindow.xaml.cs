@@ -71,7 +71,7 @@ public partial class MainWindow : Window, IDisposable
     private const double RailHeightFallback = 520;
     private const double RailTopWidth = 1100;
     private const double RailTopHeight = 78;
-    private const double RailTopDelayHeight = 100;
+    private const double RailTopDelayHeight = 104;
     private const double RailTopNarrowHeight = 96;
     private const double RailTopNarrowDelayHeight = 112;
     private const double RailTopNarrowBreakpoint = 900;
