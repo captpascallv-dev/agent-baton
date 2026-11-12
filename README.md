@@ -118,22 +118,41 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 | 组件 | macOS | 说明 |
 | --- | --- | --- |
 | `method/` 工作流方法 | 适用 | 纯文档 |
-| `claude/` 派活和叫醒、`mailbox/` Lead 之间的信箱 | 应该适用，未实测 | PowerShell 7 脚本，先装 `brew install --cask powershell`；没有在 Mac 上跑过 |
-| `acp/` ACP 客户端 | 应该适用，未实测 | 结束进程已分平台处理 |
+| `claude/` 派活和叫醒、`mailbox/` Lead 之间的信箱 | Mac 离线实测通过 | PowerShell 7.7：claude 12项、mailbox 8项；假执行者完整交卷，真实模型派活尚未执行 |
+| `acp/` ACP 客户端 | Mac 离线实测通过 | Intel macOS 15.7：mock smoke 退出 0；非真实模型调用 |
 | `tools/extract_dialogue.py` | 适用 | 纯 Python |
-| `onestead/` | 应该适用，未实测 | 只有模拟测试覆盖 macOS；网页上“打开本机应用或目录”在 macOS 不可用，见 [onestead/README.zh.md](onestead/README.zh.md) |
-| `codex/` Codex App 叫醒插件 | 未验证 | 代码有 POSIX 文件锁和 Unix 配置路径，但没在 Mac 的 Codex App 上真实收过一次唤醒 |
-| `studio/` 研究室 | 演示模式适用；真实模式需要重新做 | 网页演示是 Node，跨平台；读本机真实状态和启动器依赖 Windows |
+| `onestead/` | Mac 离线分片实测通过 | 1312个收集节点均已覆盖；首跑限时后续跑尾片，路径fixture修复后模块7项重跑通过；网页打开本机应用/目录仍不可用 |
+| `codex/` Codex App 叫醒插件 | Mac 离线实测通过；真实唤醒未测 | 36/36；慢 Intel 的普通 mock 启动时限为2秒，专用超时测试不变；未改 App 设置 |
+| `studio/` 研究室 | Mac 离线测试通过；真实模式未测 | `test:live` 29/29，假执行者与本地 HTTP；不能据此宣称真实采集器可用 |
 | `watch/` 执行观察窗 | 需要重新做 | WPF，只支持 Windows |
 | `hud/` 额度 HUD | 需要重新做 | WPF / net8.0-windows，只支持 Windows |
 | `tools/quota_pace.py` | 需要额度快照 | 读 `hud/` 写出的快照；macOS 没有 HUD，可以按同样格式自己写一份 |
-| `guards/` 内存护栏和删除护栏 | 需要重新做 | 内存上限用 Windows Job 对象，删除护栏按 Windows 路径、PowerShell 解析和回收站语义写；macOS 没有可靠的硬内存上限，要改成监视内存、超限结束进程树 |
+| `guards/` 内存护栏和删除护栏 | Mac 基础实测通过，边界见文档 | RSS 采样与进程组清理，不是硬上限；原生废纸篓；Finder alias 保守拒绝，跨卷和超大目标未测 |
 
-一句话：在 macOS 上，“写卡 → 派活 → 等交卷 → 被叫醒 → Lead 之间写信 → 记进 Onestead”这条主线预计能跑，但还没实测；三个“看得见”的窗口里只有研究室演示模式能开，两道护栏要另做一套。
+一句话：在 macOS 上，“写卡 → 派活 → 等交卷 → 被叫醒 → Lead 之间写信 → 记进 Onestead”主线的离线 mock 已在 Intel Mac 实测；真实模型派活和 App 唤醒尚未验证；三个“看得见”的窗口里只有研究室演示模式能开，两道护栏已有 Mac 分支，采样上限和文件回收的限制见各自文档。
 
-> **macOS in one line:** the core loop (method, dispatch and wake, lead mailbox, ACP client, Onestead) should work with PowerShell 7 but has not been run on a Mac yet; the studio demo runs anywhere Node runs; the studio live mode, the execution window, the quota HUD and both guards are Windows-only today and need a macOS rewrite.
+> **macOS in one line:** offline mock dispatch/wake, mailbox, ACP and plugin checks pass on Intel Mac with PowerShell 7; real model dispatch and App wake remain untested; the studio demo runs anywhere Node runs; the studio live mode, the execution window and quota HUD remain Windows-only. The guards have Mac branches: sampled RSS is not a hard cap, and native trash fails closed. See component reports for tested versus untested scope.
 
 ---
+
+## 从零用起来（Mac）
+
+需要 Node、Python 3.12+、PowerShell 7。可以将 Microsoft 官方 macOS x64 / arm64 压缩包解压到用户目录，按官方 `hashes.sha256` 核验；仅将该目录加入**本次 shell** 的 PATH，不必改系统目录。Intel 实测使用 PowerShell 7.7.0；Python 使用 PyPI 的 uv 在独立用户目录安装 3.12.16，再建项目专用 venv。不要替换系统 Python。
+
+```sh
+# 假设 python3 已是 3.12+；在仓库根目录执行
+python3 -m venv ../baton-venv
+../baton-venv/bin/python -m pip install --only-binary=:all: -e './onestead[docs]' pytest
+# 插件没有 lockfile / 安装依赖，不需要 npm ci
+npm --prefix codex/plugin test
+# Onestead 必须隔离真实家目录
+iso=$(mktemp -d /tmp/ost-XXXXXX)
+mkdir -p "$iso/home" "$iso/temp"
+HOME="$iso/home" USERPROFILE="$iso/home" TMPDIR="$iso/temp" TEMP="$iso/temp" TMP="$iso/temp" \
+  ../baton-venv/bin/python -m pytest onestead/tests -q
+```
+
+老机器测试串行运行，使用 `guards/capped_run.py --mem-gb 1 --timeout 900 --log <日志> -- <命令>` 限制测试。需要进程采样权限；拒绝时运行器退出125，不要关闭保护来冒充测试通过。只测试临时文件，清理时用系统废纸篓；不要改现有 Codex 插件、配置或其他项目。真实 Codex 派活需额外获得模型使用授权，离线通过不等于真实派活已验证。
 
 ## 从零用起来（Claude Code 当 Lead，Windows）
 

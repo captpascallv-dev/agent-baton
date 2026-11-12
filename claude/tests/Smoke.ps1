@@ -136,7 +136,12 @@ param([string]$Outbox, [string]$Mode, [string]$Pointer, [string]$Workspace, [str
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
-if ((Get-Location).Path -ne $Workspace) { throw 'Wrong executor working directory.' }
+if ($IsMacOS) {
+    # /var is a symlink to /private/var; pwsh may report the canonical cwd.
+    $actualCwd = & /usr/bin/stat -f '%d:%i' -- (Get-Location).Path
+    $expectedCwd = & /usr/bin/stat -f '%d:%i' -- $Workspace
+    if ($LASTEXITCODE -ne 0 -or $actualCwd -ne $expectedCwd) { throw 'Wrong executor working directory.' }
+} elseif ((Get-Location).Path -ne $Workspace) { throw 'Wrong executor working directory.' }
 if ($Mode -eq 'stdin') { $text = [Console]::In.ReadToEnd() }
 elseif ($Mode -eq 'pointer') {
     if ($Pointer -notmatch '^Read the task card file "([^"]+)" \(UTF-8\) in full and follow it exactly\. Do nothing outside the card\.$') { throw 'Bad pointer argument.' }

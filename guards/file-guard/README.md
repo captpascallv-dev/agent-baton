@@ -8,7 +8,7 @@
 
 - 只接受已经解析好的字面绝对路径。路径里出现变量、环境占位（`$`、`%`）、反引号、通配符（`*`、`?`、`[]`），或者还是相对路径，一律拒绝。解析失败同样拒绝，不会当成“看不懂就放行”。
 - `recycle` 先把一整批路径都检查完。任何一项不合格，就在调用回收器之前返回，已经合格的那些也不会被送走。
-- 回收器抛错时停在失败上，不改叫永久删除。没装 `send2trash` 时同样一项都不删。
+- 回收器抛错时停在失败上，不改叫永久删除。Windows 缺少 `send2trash`、Mac 缺少 `/usr/bin/trash` 时同样不删。
 - 磁盘根、保护根，以及保护根的上级目录，不能删，也不能移。保护根里面的普通文件不在这条里：护栏挡住的是根目录本身和它的祖先，避免把整个用户目录或盘符移走、删掉。
 - 在 Windows 上，目录联接和符号链接会先解析。你交出的路径必须已经是最终目标；解析后如果和原字符串不是同一条路径，就拒绝，护栏不会替你改写删除对象。
 
@@ -16,7 +16,7 @@
 
 ## 安装到 Claude Code
 
-需要 Python 3.10 或更新版本，以及回收器：
+需要 Python 3.10 或更新版本。Windows 需要下面的回收器；Mac 使用系统自带的 `/usr/bin/trash`（macOS 14+），无需安装第三方 Python 依赖：
 
 ```powershell
 pip install send2trash
@@ -94,12 +94,15 @@ python guards/file-guard/file_guard.py preimage --path <已经解析的绝对文
 
 在 Windows 上，上面列出的行为都可以用。PowerShell 检查优先用 PATH 上的 `pwsh`（PowerShell 7）；没有时用 PATH 上的 `powershell.exe`（Windows PowerShell 5.1 也有同一套语法树）。回收通过 `send2trash` 进回收站。
 
-在 Mac / Linux 上：
+在 macOS 14+ 上，Mac 实测通过（macOS 15.7，Intel）：
 
-- 能跑的是不碰 Windows 路径的那一部分：`cmd` / `bash` 的分词、Python 源码的语法树检查。装了 `pwsh` 时，`powershell_ast.ps1` 和 `powershell_stop.ps1` 也能执行，因为它们只用 PowerShell 的语法树。
-- 不能当作本机文件的删除护栏。POSIX 绝对路径（例如 `/home/...`）没有盘符，会被判成“还不是绝对路径”而拒绝。`send2trash` 在这些系统上能把文件放进废纸篓，但路径过不了前面的 Windows 规则，正常回收走不到那一步。
-- 联接和符号链接的核对只在 Windows 上做（`os.name == "nt"` 时才 `Path.resolve`）。其他系统不解析符号链接，也不会发出“请改交最终路径”的那次拒绝。
-- 钩子适配器在非 Windows 上启动 PowerShell 时不使用 `CREATE_NO_WINDOW`（该标志不存在时按 0 处理），进程调用本身可以执行。
+- POSIX 字面绝对路径、整批预检、动态路径拒绝、根目录保护、符号链接拒绝、失败不永久删除及真实临时文件回收已测试。
+- 符号链接和带链接的祖先必须先由调用者解析为最终路径；护栏不会替换目标。Finder alias 通过系统 FinderInfo 标志检测并保守拒绝，包括祖先目录中的 alias。此版本**不自动解析 Finder alias**，请自行明确最终目标后再交入。别名标志分支使用模拟测试，未创建真实 Finder alias。
+- 使用系统 `/usr/bin/trash -s`，无 Finder Apple Events/辅助功能授权弹窗。底层回收失败（含跨卷或空间限制）会报告失败，绝不调用 `rm`/`unlink`。实际跨卷和超大文件场景未测试；真实回收测试确认原路径消失，但尚未验证从废纸篓恢复后的内容完整性。
+- macOS 移动操作的所有操作数都必须是已解析的绝对路径。保护根比较保守地忽略大小写，可能在大小写敏感卷上多拒绝，但不会少保护。
+- 扩展属性检查失败时拒绝，不把权限错误当作“不是别名”。没有 `/usr/bin/trash` 的旧 Mac 不执行回收。
+
+Linux 仍不提供本机路径/回收支持。Windows 路径行为保持原分支；Windows 测试套件在非 Windows 跳过，Mac 使用独立套件，不将跳过宣称为通过。
 
 ## 测试
 
@@ -123,4 +126,4 @@ Install `send2trash`, then point Claude Code’s `PreToolUse` hook at `hook_adap
 
 Configuration is the JSON file named by `FILE_GUARD_CONFIG`, otherwise `file_guard.config.json` next to `file_guard.py`, otherwise defaults. Empty strings and `null` keep the default for that key. A `protected_roots` array replaces the derived roots. Defaults are the home directory, its parent, `~/.claude`, `~/.codex`, `~/.cursor`, `~/Documents`, `~/Projects`, and this guard’s own directory. Python defaults to `sys.executable`. PowerShell defaults to `pwsh` on `PATH`, then `powershell` on `PATH`. Old-file copies default to `preimages` under this directory. `FILE_GUARD_PWSH` still overrides `pwsh` when it names an existing executable. Copy `file_guard.config.example.json`; as shipped, it leaves the defaults in place.
 
-The path policy is Windows-shaped. On macOS and Linux the text scanners and, when `pwsh` is installed, the PowerShell AST scripts can run, but a native POSIX path is rejected as non-absolute, symlink retargeting is not checked, and recycle therefore does not become a local trash workflow.
+Windows keeps its existing path policy and send2trash recycler. macOS 14+ uses strict canonical POSIX paths and the native `/usr/bin/trash -s` command, without new Python dependencies or Finder automation. Symlinks and Finder aliases are refused rather than retargeted; alias resolution is deliberately left to the caller. FinderInfo read errors fail closed. Native fixture trash and macOS policy tests passed on Intel macOS 15.7; real Finder aliases, cross-volume moves and oversized targets remain untested. There is no permanent-delete fallback. Linux native trash remains unsupported.

@@ -7,25 +7,29 @@ allocations fail and the watchdog ends the whole tree, so the machine stays usab
 
 usage: python capped_run.py [--mem-gb 2] [--timeout 900] [--cwd DIR] [--log FILE] -- cmd args...
 exit: the command's own code; 124 timeout; 137 memory cap hit; 125 runner error.
-Windows only; needs pywin32. CAPPED_RUN_MAX_GB sets the per-run ceiling (default 6).
+Windows needs pywin32. macOS uses sampled process-tree RSS and process-group cleanup,
+not a hard memory cap or a sandbox against deliberately detached processes.
+CAPPED_RUN_MAX_GB sets the per-run ceiling (default 6).
 """
 from __future__ import annotations
 
 import argparse
-import msvcrt
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
 
-import win32api
-import win32con
-import win32event
-import win32job
-import win32process
+if os.name == "nt":
+    import msvcrt
+    import win32api
+    import win32con
+    import win32event
+    import win32job
+    import win32process
 
 MAX_MEM_GB = float(os.environ.get("CAPPED_RUN_MAX_GB", "6"))  # one run never takes more than this
 
@@ -35,6 +39,81 @@ def resolve(argv: list[str]) -> list[str]:
     if exe.lower().endswith((".cmd", ".bat")):
         return [os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"), "/d", "/c", exe, *argv[1:]]
     return [exe, *argv[1:]]
+
+
+def process_tree_rss(root: int) -> int:
+    """Sample RSS (bytes) for the original process group and its descendants.
+
+    ps reports KiB on macOS. This is a sampled, not kernel-enforced, limit;
+    shared resident pages may be counted more than once.
+    """
+    result = subprocess.run(
+        ["/bin/ps", "-axo", "pid=,ppid=,pgid=,rss="],
+        capture_output=True, text=True, check=True, timeout=5)
+    rows = [tuple(map(int, line.split())) for line in result.stdout.splitlines()
+            if line.strip()]
+    selected = {pid for pid, ppid, pgid, rss in rows if pgid == root or pid == root}
+    while True:
+        children = {pid for pid, ppid, pgid, rss in rows if ppid in selected}
+        if children <= selected:
+            break
+        selected |= children
+    return sum(rss for pid, ppid, pgid, rss in rows if pid in selected) * 1024
+
+
+def run_macos(args, argv: list[str], limit: int, log: str) -> int:
+    """Run in a private session; always kill remaining members of that group.
+
+    Not a sandbox: deliberately detached/daemonized processes can escape a
+    process group. Do not use this runner for untrusted process containment.
+    """
+    process = None
+    code, verdict, peak = 125, "runner_error", 0
+    started = time.monotonic()
+    try:
+        with open(log, "wb") as out:
+            process = subprocess.Popen(argv, cwd=args.cwd, stdin=subprocess.DEVNULL,
+                                       stdout=out, stderr=out, start_new_session=True)
+            while True:
+                status = process.poll()
+                if status is not None:
+                    code = status if status >= 0 else 128 - status
+                    verdict = "exited"
+                    break
+                peak = max(peak, process_tree_rss(process.pid))
+                if peak >= limit:
+                    code, verdict = 137, "memory_cap_hit"
+                    break
+                if time.monotonic() - started >= args.timeout:
+                    code, verdict = 124, "timeout"
+                    break
+                time.sleep(0.1)
+    except Exception as exc:
+        code, verdict = 125, f"runner_error: {exc!r}"
+    finally:
+        if process is not None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except OSError as exc:
+                code, verdict = 125, f"runner_error: cleanup failed: {exc!r}"
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                code, verdict = 125, "runner_error: child did not exit after kill"
+    # Avoid reading an arbitrarily large test log into memory.
+    from collections import deque
+    try:
+        with open(log, encoding="utf-8", errors="replace") as fh:
+            lines = list(deque(fh, maxlen=max(0, args.tail)))
+    except OSError:
+        lines = []
+    for line in lines:
+        print(line, end="")
+    print(f"[capped_run] {verdict} code={code} peak={peak / 1024 ** 3:.2f}GB "
+          f"cap={args.mem_gb}GB elapsed={time.monotonic() - started:.1f}s log={log}")
+    return code
 
 
 def main() -> int:
@@ -54,6 +133,12 @@ def main() -> int:
     limit = int(args.mem_gb * 1024 ** 3)
     log = args.log or os.path.join(tempfile.gettempdir(), f"capped-run-{uuid.uuid4().hex[:8]}.log")
     argv = resolve(cmd)
+
+    if sys.platform == "darwin":
+        return run_macos(args, argv, limit, log)
+    if os.name != "nt":
+        print("[capped_run] unsupported platform code=125", file=sys.stderr)
+        return 125
 
     job = win32job.CreateJobObject(None, "")
     info = win32job.QueryInformationJobObject(job, win32job.JobObjectExtendedLimitInformation)

@@ -2,7 +2,7 @@
 
 一群 agent 同时在一台电脑上跑测试、编译，最怕的不是哪张卡写错，而是一批没设上限的测试把整机内存吃光：编辑器、聊天工具、所有在跑的会话一起崩，最后只能强制关机。贡献者遇到过一次：一批 pytest 吃到约 72 GB（机器 32 GB），整机卡死。这里的两个文件就是事后装上的护栏，之后再没出过事。删除和移动的可见命令护栏在 [`file-guard/`](file-guard/README.md)。
 
-> guards/ holds two small Windows guards: `capped_run.py` runs any command tree inside a Windows Job with a hard memory cap and a wall-clock timeout; `guard_test_runs.py` is a PreToolUse hook that refuses test commands not wrapped by it. The deletion guard lives in [`file-guard/`](file-guard/README.md).
+> guards/ holds two small guards: `capped_run.py` runs any command tree inside a Windows Job with a hard memory cap, or on macOS with sampled process-tree RSS and a wall-clock timeout; `guard_test_runs.py` is a PreToolUse hook that refuses test commands not wrapped by it. The deletion guard lives in [`file-guard/`](file-guard/README.md).
 
 ## 两个文件
 
@@ -45,3 +45,15 @@ Claude Code（`~/.claude/settings.json`）：
 ## License
 
 MIT，见仓库根目录 LICENSE。
+
+## macOS 实测与限制
+
+macOS 15.7 Intel 上，内存运行器 8 项测试、命令钩子 3 项测试通过。使用 Python 标准库，无需 pywin32：
+
+```sh
+python3 guards/capped_run.py --mem-gb 1 --timeout 900 --log /tmp/test.log -- python3 -m unittest discover -s guards/tests
+```
+
+Mac 分支以独立 session / 进程组启动，每 100ms 用系统 `ps` 汇总该组及后代的 RSS；共享页可能重复计数，采样间可能短暂超限。超时 124、超内存 137、运行或采样失败 125；采样权限被拒绝时失败关闭。命令结束时清理原进程组的残留成员。
+
+这不是 Windows Job 那样的硬上限，也不是安全沙箱：主动 `setsid` 脱离进程组的程序不能保证收容。不要用于不可信进程；8GB 机器请串行运行，每项建议 1GB，不承诺采样能防止所有内存峰值。Windows 路径和 Job 行为保持不变。删除护栏的原生废纸篓实现和未测边界见 `file-guard/README.md`。

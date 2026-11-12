@@ -8,6 +8,8 @@ beside this file, else defaults derived from the home directory.
 from __future__ import annotations
 
 import argparse
+import errno
+import ctypes
 import ast
 import json
 import ntpath
@@ -47,7 +49,13 @@ def deny(code: str, reason: str, suggestion: str | None = None) -> dict[str, Any
     return result("deny", code, reason, suggestion)
 
 
+def path_key(value: str) -> str:
+    return value if sys.platform == "darwin" else ntpath.normcase(value)
+
+
 def native_path(value: str) -> str:
+    if sys.platform == "darwin":
+        return value
     # Git Bash's conventional drive paths are still explicit absolute paths.
     if re.match(r"^/[A-Za-z]/", value):
         value = value[1].upper() + ":/" + value[3:]
@@ -80,6 +88,10 @@ def _optional_text(data: dict[str, Any], key: str) -> str | None:
 def _literal_absolute(value: str) -> str:
     if not isinstance(value, str) or not value.strip() or any(char in value for char in _DYNAMIC_CHARS):
         raise ConfigError("Configured paths must be literal absolute paths, without variables or wildcards.")
+    if sys.platform == "darwin":
+        if not value.startswith("/") or "\x00" in value or "\\" in value:
+            raise ConfigError("Configured paths must be literal POSIX absolute paths.")
+        return str(Path(value).resolve(strict=False))
     converted = native_path(value.strip())
     drive, tail = ntpath.splitdrive(converted)
     if not drive or not tail.startswith("\\") or converted.startswith("\\\\.\\"):
@@ -100,7 +112,7 @@ def _normalize_roots(values: Any) -> tuple[str, ...]:
     output: list[str] = []
     seen: set[str] = set()
     for value in values:
-        normalized = ntpath.normcase(_literal_absolute(value))
+        normalized = path_key(_literal_absolute(value))
         if normalized not in seen:
             seen.add(normalized)
             output.append(normalized)
@@ -181,6 +193,51 @@ def python_runtime() -> str:
     return sys.executable
 
 
+def mac_finder_info(path: Path) -> bytes:
+    """Read Finder flags without following a symlink (Darwin getxattr ABI)."""
+    libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
+    read = libc.getxattr
+    read.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint32, ctypes.c_int]
+    read.restype = ctypes.c_ssize_t
+    data = ctypes.create_string_buffer(32)
+    length = read(os.fsencode(path), b"com.apple.FinderInfo", data, 32, 0, 1)
+    if length < 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code))
+    return data.raw[:length]
+
+
+def mac_path_policy(value: str, roots: tuple[str, ...]) -> tuple[dict[str, Any] | None, str | None]:
+    if not value.startswith("/") or "\\" in value:
+        return deny("DELETE_TARGET_NOT_ABSOLUTE", "Use a literal POSIX absolute path."), None
+    if any(part in {".", ".."} for part in value.split("/")):
+        return deny("DELETE_TARGET_NOT_RESOLVED", "Resolve dot and parent segments first."), None
+    try:
+        canonical = str(Path(value).resolve(strict=False))
+        # Finder aliases are not POSIX symlinks. Refuse them (including ancestors)
+        # rather than silently retargeting or trusting Spotlight's cached metadata.
+        for component in [Path(value), *Path(value).parents]:
+            if not component.exists():
+                continue
+            try:
+                info = mac_finder_info(component)
+            except OSError as exc:
+                if exc.errno not in {errno.ENOATTR, errno.ENOTSUP}:
+                    raise
+            else:
+                if len(info) >= 10 and int.from_bytes(info[8:10], "big") & 0x8000:
+                    return deny("DELETE_TARGET_NOT_CANONICAL", "Finder aliases are refused. Resolve the alias and explicitly supply its final target."), None
+    except (OSError, RuntimeError, ValueError):
+        return deny("DELETE_TARGET_UNRESOLVABLE", "The filesystem target could not be checked safely."), None
+    if canonical != value:
+        return deny("DELETE_TARGET_NOT_CANONICAL", "Supply the resolved final target; symlinks and aliases are not retargeted."), None
+    # Conservative case folding protects roots on case-insensitive APFS too.
+    key = canonical.casefold()
+    if os.path.ismount(canonical) or canonical == "/" or any(key == root.casefold() or root.casefold().startswith(key.rstrip("/") + "/") for root in roots):
+        return deny("PROTECTED_TARGET", "A protected root or its ancestor cannot be removed."), None
+    return None, canonical
+
+
 def path_policy(value: Any) -> tuple[dict[str, Any] | None, str | None]:
     try:
         roots = protected_roots()
@@ -192,6 +249,8 @@ def path_policy(value: Any) -> tuple[dict[str, Any] | None, str | None]:
         return deny("PROTECTED_TARGET", "A disk root must never be a cleanup target."), None
     if any(ch in value for ch in "$%`*?[]"):
         return deny("DELETE_TARGET_DYNAMIC", "Deletion targets cannot contain variables, interpolation, environment placeholders, or wildcards."), None
+    if sys.platform == "darwin":
+        return mac_path_policy(value, roots)
     converted = native_path(value)
     drive, tail = ntpath.splitdrive(converted)
     if not drive or not tail.startswith("\\") or converted.startswith("\\\\.\\"):
@@ -202,7 +261,7 @@ def path_policy(value: Any) -> tuple[dict[str, Any] | None, str | None]:
     except (OSError, RuntimeError, ValueError):
         return deny("DELETE_TARGET_UNRESOLVABLE", "The final filesystem target could not be resolved safely."), None
     canonical = ntpath.normpath(canonical)
-    normalized = ntpath.normcase(canonical)
+    normalized = path_key(canonical)
     final_drive, final_tail = ntpath.splitdrive(normalized)
     if final_drive and final_tail in {"", "\\"}:
         return deny("PROTECTED_TARGET", "A disk or share root must never be a cleanup target."), None
@@ -258,6 +317,12 @@ def moving(sources: list[Any], destination: Any, cwd: str, *, unknown: bool = Fa
         return deny("MOVE_TARGET_DYNAMIC", "Variables, wildcard batches, and computed move targets must be resolved to explicit literal absolute paths first.")
     resolved: list[str] = []
     for index, value in enumerate(operands):
+        if sys.platform == "darwin":
+            failure, canonical = path_policy(value)
+            if failure:
+                return deny("PROTECTED_MOVE_TARGET" if failure["code"] == "PROTECTED_TARGET" else "MOVE_TARGET_UNRESOLVED", "Mac move operands must be independently resolved absolute unprotected paths.")
+            resolved.append(canonical)
+            continue
         converted = native_path(value)
         drive, tail = ntpath.splitdrive(converted)
         if not drive or not tail.startswith("\\"):
@@ -719,18 +784,24 @@ def recycle(paths: list[str]) -> tuple[dict[str, Any], int]:
         if failure:
             return failure, 2
         assert canonical is not None
-        normalized = ntpath.normcase(canonical)
+        normalized = path_key(canonical)
         if normalized not in seen:
             checked.append((path, canonical))
             seen.add(normalized)
     try:
-        from send2trash import send2trash
+        if sys.platform == "darwin":
+            if not os.path.isfile("/usr/bin/trash"):
+                raise ImportError("macOS 14+ native trash tool is required")
+            def send2trash(path: str) -> None:
+                subprocess.run(["/usr/bin/trash", "-s", path], check=True, capture_output=True, timeout=120)
+        else:
+            from send2trash import send2trash
     except ImportError:
-        return deny("RECYCLER_UNAVAILABLE", "send2trash is unavailable in this runtime. Nothing was permanently deleted."), 3
+        return deny("RECYCLER_UNAVAILABLE", "The platform recycler is unavailable. Nothing was permanently deleted."), 3
     entries: list[dict[str, Any]] = []
     for original, canonical in checked:
         failure, current = path_policy(original)
-        if failure or current is None or ntpath.normcase(current) != ntpath.normcase(canonical):
+        if failure or current is None or path_key(current) != path_key(canonical):
             output = failure or deny("DELETE_TARGET_CHANGED", "The resolved cleanup target changed after preflight.")
             output["results"] = entries
             return output, 3
@@ -741,7 +812,7 @@ def recycle(paths: list[str]) -> tuple[dict[str, Any], int]:
             send2trash(canonical)
             entries.append({"path": canonical, "status": "recycled"})
         except Exception:
-            output = deny("RECYCLE_FAILED", "Windows recycle failed. No permanent-delete fallback was used.")
+            output = deny("RECYCLE_FAILED", "Recycle failed. No permanent-delete fallback was used.")
             output["results"] = entries + [{"path": canonical, "status": "failed"}]
             return output, 3
     output = result("allow", "RECYCLED", "Explicit cleanup completed through the recycle bin; missing targets were harmless no-ops.")
@@ -774,7 +845,7 @@ def preimage(paths: list[str], root: str | None = None) -> tuple[dict[str, Any],
         if failure:
             return failure, 2
         assert canonical is not None
-        normalized = ntpath.normcase(canonical)
+        normalized = path_key(canonical)
         if normalized not in seen:
             checked.append((original, canonical))
             seen.add(normalized)
@@ -796,7 +867,7 @@ def preimage(paths: list[str], root: str | None = None) -> tuple[dict[str, Any],
         batch.mkdir()
         for index, (original, canonical) in enumerate(checked, 1):
             failure, current = preimage_source(original)
-            if failure or current is None or ntpath.normcase(current) != ntpath.normcase(canonical):
+            if failure or current is None or path_key(current) != path_key(canonical):
                 raise OSError("source changed after preflight")
             backup = batch / (f"{index:04d}--" + ntpath.basename(canonical))
             shutil.copy2(canonical, backup, follow_symlinks=False)

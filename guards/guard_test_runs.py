@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sys
+import shlex
 
 CAP_ENTRIES = ("capped_run.py", "bounded_pytest.py")
 CAPPED_RUN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "capped_run.py").replace("\\", "/")
@@ -32,6 +33,10 @@ REASON = (
     "TEST_MEMORY_CAP_REQUIRED: 跑测试必须套 Windows Job 内存上限 / test runs need a memory cap. 改成\n"
     f"  python {CAPPED_RUN} --mem-gb 2 --timeout 900 --log <日志文件> -- <原命令>\n"
     "（或项目的 bounded_pytest.py）。建议同时最多 3 个上限进程、上限合计不超过机器内存的四分之一。")
+
+
+if sys.platform == "darwin":
+    REASON = REASON.replace("Windows Job 内存上限", "macOS 采样式进程树内存上限")
 
 
 def command_of(event) -> str:
@@ -59,6 +64,20 @@ def denied(client: str) -> dict:
 
 
 def needs_cap(command: str) -> bool:
+    if sys.platform == "darwin":
+        # Match POSIX executable paths and ordinary env/assignment prefixes.
+        # This remains a visible-command hook, not a shell sandbox.
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return True
+        if tokens and os.path.basename(tokens[0]) == "env":
+            tokens = tokens[1:]
+        while tokens and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", tokens[0]):
+            tokens = tokens[1:]
+        normalized = " ".join(os.path.basename(t) if t.startswith("/") else t for t in tokens)
+        # Preserve shell line separators lost by shlex.split/join.
+        return bool(TEST_RUNNER.search(command) or TEST_RUNNER.search(normalized)) and not any(e in command for e in CAP_ENTRIES)
     return bool(TEST_RUNNER.search(command)) and not any(e in command for e in CAP_ENTRIES)
 
 

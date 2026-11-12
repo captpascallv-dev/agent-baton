@@ -66,9 +66,11 @@ function job(f, jobId = 'job', attempt = '1', source = 'cli', marker = {}, proje
   write(path.join(outbox, 'READY.json'), { status: 'completed', deliverables: ['result.txt'], notes: 'Example', ...marker });
   return { id: registration.key, outbox };
 }
+// Slow Intel Macs need startup headroom for the ordinary fake-host fixture.
+// Dedicated deadline tests still set their own short limits; production is unchanged.
 function engine(f, options = {}) {
   const instance = new AppMailboxEngine({ stateDir: f.stateDir, coordinatorThreadId: coordinator, env: f.env,
-    driver: new MailboxDriver({ root: f.mailboxRoot, pythonPath: python }), client: new OfficialTools({ env: f.env, timeoutMs: 250 }), ...options });
+    driver: new MailboxDriver({ root: f.mailboxRoot, pythonPath: python }), client: new OfficialTools({ env: f.env, timeoutMs: process.platform === 'darwin' ? 2000 : 250 }), ...options });
   f.engines.push(instance); return instance;
 }
 const events = f => fs.existsSync(f.log) ? fs.readFileSync(f.log, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : [];

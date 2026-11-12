@@ -91,7 +91,8 @@ def test_company_matches_deepest_visible_directory(repo, as_agent, ext, monkeypa
     base.update_project_status("alpha", "第二条进展")
     base.update_project_status("alpha", "第三条进展")
     change(repo, "projects/alpha/project.md", paths=["C:/Work/Shop"])
-    change(repo, "projects/beta/project.md", paths=["C:\\Work\\Shop\\Site"])
+    # Backslash is a literal filename character on POSIX, not a separator.
+    change(repo, "projects/beta/project.md", paths=["C:\\Work\\Shop\\Site" if os.name == "nt" else "C:/Work/Shop/Site"])
     change(repo, "projects/secret/project.md", paths=["D:/Secret/Only"])
 
     hit = base.company(cwd="C:/Work/Shop")

@@ -59,6 +59,7 @@ def _expected_default_roots() -> tuple[str, ...]:
     return tuple(output)
 
 
+@unittest.skipUnless(os.name == "nt", "Windows path-policy suite; see test_file_guard_mac.py")
 class FileGuardTests(unittest.TestCase):
     def setUp(self) -> None:
         self._saved_env = {key: os.environ.get(key) for key in ("FILE_GUARD_CONFIG", "FILE_GUARD_PWSH")}
