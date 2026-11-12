@@ -2,17 +2,12 @@
   "mcpServers": {
     "codex_mail_wake": {
       "command": "node",
-      "args": ["./server.mjs"],
+      "args": ["./diagnostic-server.mjs"],
       "cwd": ".",
       "env_vars": ["MAIL_WAKE_CONFIG", "MAIL_WAKE_MAILBOX_ROOT", "MAIL_WAKE_STATE_DIR", "MAIL_WAKE_COORDINATOR", "MAIL_WAKE_PYTHON", "CODEX_APP_TOOLS_PIPE_PATH", "CODEX_THREAD_ID", "CODEX_HOME", "HOME", "USERPROFILE", "LOCALAPPDATA", "PATH", "CODEX_MCP_NODE_PATH", "CODEX_BROWSER_USE_NODE_PATH", "CODEX_ELECTRON_RESOURCES_PATH", "CODEX_CLI_PATH", "XDG_CACHE_HOME"],
       "startup_timeout_sec": 10,
       "tool_timeout_sec": 30,
-      "tools": {
-        "start_app_mailbox_watch": { "approval_mode": "prompt" },
-        "stop_app_mailbox_watch": { "approval_mode": "prompt" },
-        "grant_app_mailbox_delegation": { "approval_mode": "prompt" },
-        "revoke_app_mailbox_delegation": { "approval_mode": "prompt" }
-      }
+      "tools": {}
     }
   }
 }
