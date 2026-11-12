@@ -325,3 +325,20 @@ Mac bridge 使用 .NET 8 和共享 Mac 进程探针，网页沿用现有研究�
 用于只截该测试窗口，不访问用户的浏览器标签。执行验证仍应套内存/时间护栏。
 
 Mac 视觉核验限制：独立 WKWebView QA 窗口两次未在 20 秒内回报页面加载完成，已停止自己的预览进程。没有取得研究室 Mac 窗口截图，不把 HTTP 返回正常当作页面视觉验收。`tools/mac-preview.swift` 是仅本机地址的可选诊断源码，不是交付的浏览器替代品。
+
+
+### Mac Safari visual evidence (synthetic task only)
+
+The scoped live server was opened in Safari on Intel macOS 15.7 with the public
+Dispatcher's fake executor, not a model. The task count changed from one current
+external task to zero after READY and exit. Browser-window-only captures:
+
+- [Running synthetic external task](docs/images/mac-studio-running.png)
+- [No current external task after exit](docs/images/mac-studio-idle.png)
+
+Unknown window/session status is deliberate: no private session data is loaded.
+The running label remains unknown where the collector has no stronger evidence;
+zero current tasks does not prove the user's real agents are idle. These are not
+full visual acceptance: floating agent chips overlap the summary strip at this
+viewport, and automatic light/dark theme switching was not verified. No system
+appearance settings were changed. The dedicated WKWebView path is still unverified.

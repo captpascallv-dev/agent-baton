@@ -513,12 +513,14 @@ public sealed partial class MailboxCollector : ICollector
         }
 
         var bindInputs = new List<JobBindInput>();
-        var registrationFiles = files.ToList();
+        // Stable registration order and whole-pass priority match the shared Watch collector.
+        var registrationFiles = files.OrderBy(path => path, StringComparer.Ordinal).ToList();
         var currentFirst = new List<string>();
         var closeoutNext = new List<string>();
         var history = new List<string>();
         PartitionJobFiles(root, registrationFiles, live, currentFirst, closeoutNext, history);
         var pendingAdapters = new HashSet<string>(LivePromptAdapterIds(live), StringComparer.OrdinalIgnoreCase);
+        var prioritizePromptRegistrations = pendingAdapters.Count > 0;
         var deferredEvidence = new List<RawDocument>();
         var stop = false;
 
@@ -625,9 +627,9 @@ public sealed partial class MailboxCollector : ICollector
 
             if (jobDoc is null) return;
             var adapterId = LivePromptAdapterId(jobDoc);
-            // Registration content is already budgeted. While a live prompt adapter is still
-            // unmatched, keep historical extra files behind that registration's identity reads.
-            if (canDeferEvidence && pendingAdapters.Count > 0 && (adapterId is null || !pendingAdapters.Contains(adapterId)))
+            // Keep historical extra files behind the entire registration pass,
+            // including after the final live prompt adapter has been matched.
+            if (canDeferEvidence && prioritizePromptRegistrations && (adapterId is null || !pendingAdapters.Contains(adapterId)))
             {
                 deferredEvidence.Add(jobDoc);
                 return;

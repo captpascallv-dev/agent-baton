@@ -123,15 +123,15 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 | `tools/extract_dialogue.py` | 适用 | 纯 Python |
 | `onestead/` | Mac 离线分片实测通过 | 1312个收集节点均已覆盖；首跑限时后续跑尾片，路径fixture修复后模块7项重跑通过；网页打开本机应用/目录仍不可用 |
 | `codex/` Codex App 叫醒插件 | Mac 离线实测通过；本次真实叫醒被宿主拒绝 | 36/36；插件安装、重载和真实 start/status 成功。本次 Intel macOS 15.7 / Codex App 26.1106.51428（build 26605）上，真实叫醒被宿主的原生对端签名授权拒绝（`dynamic_app_tools_peer_rejected`，`missing-code-signing-identity`）；改用官方包自带的子进程启动器后仍被拒，确切缺失身份的进程层级未定位，未发送或续接。管道关闭错误现已进入 60 秒只读恢复。不改签名、不关校验、不借管道；这不代表所有 Mac 都不支持，等官方明确第三方插件使用 App 工具的入口和授权条件后再试 |
-| `studio/` 研究室 | Mac 显式任务目录 live 链路实测 | 共用真实采集器读取假执行者，HTTP 三阶段通过；30 项 Node 测试通过；私人会话不接入，视觉截图未完成 |
-| `watch/` 执行观察窗 | Mac 原生版本已做，有已知差异 | SwiftUI 普通窗口 + 共享 C# CLI/投影；显式任务目录与匹配 PID 的假执行者三阶段实测；核心回归 232/233，一项枚举顺序预算差异待修；WPF 未在 Mac 测 |
+| `studio/` 研究室 | Mac 显式任务目录 live 链路实测 | 共用真实采集器读取假执行者，HTTP 三阶段通过；本轮 29 项 Node 测试通过；私人会话不接入；Safari 假执行者运行/空闲截图已补，浮层遮挡与深浅主题仍有视觉验证缺口 |
+| `watch/` 执行观察窗 | Mac 原生版本及核心回归通过 | SwiftUI 普通窗口 + 共享 C# CLI/投影；显式任务目录与匹配 PID 的假执行者三阶段实测；核心回归 234/234，包含登记最前/最后顺序回归；WPF 未在 Mac 测 |
 | `hud/` 额度 HUD | Mac 版已做，Codex 主额度实测通过 | SwiftUI 菜单栏应用 + 与 Windows 共用数据层的命令行入口 `CodexUsageHud.Cli`；Intel Mac 用主号真实读取 1 次，与 Windows HUD 和 App 显示一致；浅深色中文界面截图使用六槽模拟数据，未再次读额度；其余槽位默认关闭，会话层级和 token 统计未移植；Windows/WPF 测试套只在 Windows 跑 |
 | `tools/quota_pace.py` | Mac 实测通过 | 默认读 `~/Library/Application Support/CodexUsageHUD/quota-snapshot.json`（Mac 版 HUD 命令行入口写出） |
 | `guards/` 内存护栏和删除护栏 | Mac 基础实测通过，边界见文档 | RSS 采样与进程组清理，不是硬上限；原生废纸篓；Finder alias 保守拒绝，跨卷和超大目标未测 |
 
-一句话：在 macOS 上，“写卡 → 派活 → 等交卷 → 被叫醒 → Lead 之间写信 → 记进 Onestead”主线的离线 mock 已在 Intel Mac 实测；真实模型派活已交卷 1 次；App 唤醒在本次测试的 Mac 上被宿主的对端签名授权拒绝；三个“看得见”的窗口里，额度 HUD 有了 Mac 菜单栏版，研究室已有显式任务目录 live 链路（假执行者实测，视觉验收未完成），执行观察窗已有原生 Mac 版（显式目录，非全机扫描）；两道护栏已有 Mac 分支，采样上限和文件回收的限制见各自文档。
+一句话：在 macOS 上，“写卡 → 派活 → 等交卷 → 被叫醒 → Lead 之间写信 → 记进 Onestead”主线的离线 mock 已在 Intel Mac 实测；真实模型派活已交卷 1 次；App 唤醒在本次测试的 Mac 上被宿主的对端签名授权拒绝；三个“看得见”的窗口里，额度 HUD 有了 Mac 菜单栏版，研究室已有显式任务目录 live 链路（假执行者实测、Safari 运行/空闲截图，主题与浮层仍有限制），执行观察窗已有原生 Mac 版（显式目录，非全机扫描）；两道护栏已有 Mac 分支，采样上限和文件回收的限制见各自文档。
 
-> **macOS in one line:** offline mock dispatch/wake, mailbox, ACP and plugin checks pass on Intel Mac with PowerShell 7; one real model dispatch delivered, App wake was attempted but rejected before send by the host's native peer-signature authorization on the tested Intel macOS 15.7 / App 26.1106.51428 (still rejected with the official launcher; the missing identity level is not located); the quota HUD has a macOS menu-bar version; the studio demo runs anywhere Node runs; the studio scoped live collector and HTTP lifecycle pass with a fake executor (visual QA incomplete), and the execution window has a native Mac implementation (one core regression remains failing). The guards have Mac branches: sampled RSS is not a hard cap, and native trash fails closed. See component reports for tested versus untested scope.
+> **macOS in one line:** offline mock dispatch/wake, mailbox, ACP and plugin checks pass on Intel Mac with PowerShell 7; one real model dispatch delivered, App wake was attempted but rejected before send by the host's native peer-signature authorization on the tested Intel macOS 15.7 / App 26.1106.51428 (still rejected with the official launcher; the missing identity level is not located); the quota HUD has a macOS menu-bar version; the studio demo runs anywhere Node runs; the studio scoped live collector and HTTP lifecycle pass with a fake executor (Safari running/idle screenshots captured; theme and overlay limitations remain), and the execution window has a native Mac implementation (234/234 core cases pass, including registration-order regressions). The guards have Mac branches: sampled RSS is not a hard cap, and native trash fails closed. See component reports for tested versus untested scope.
 
 ---
 
