@@ -57,6 +57,25 @@ pipe, caller identity, watcher authorization or actual Lead continuation. Do not
 read private session files or fabricate host metadata to work around a failed
 host connection.
 
+## Host pipe closure and recovery
+
+The official child process may remain alive while its host socket closes. An
+exact native RPC error `-32603: Codex app tools pipe closed` now marks the adapter
+unavailable and enters the existing recovery path. Ordinary refusals and isolated
+request deadlines do not trigger this path.
+
+Recovery waits at least 60 seconds, reconnects using the same launch environment,
+and reads the original actor before resuming authorized reception. It does not
+discover another pipe, change caller identity or restart the App. A failure
+before send leaves the delivery pending; a submitted send with no exact receipt
+stays uncertain and is never automatically repeated, even after recovery.
+
+This fixes error classification, not the host's reason for closing a connection.
+If the original launch pipe is no longer usable, recovery remains unavailable.
+The reported Mac failure still needs an authorized real App retest; synthetic
+checks do not establish an actual Lead wake. Preserve its stopped watch and
+pending delivery until that retest is authorized.
+
 ## 可运行的默认账本
 
 以下命令在仓库根执行。先创建 `../wake-demo/outbox`；`YOUR_LEAD_THREAD_ID` 替换为真正的收件 Lead ID。将配置例子复制为 `../wake-demo/config.json`；其 `./mailbox`/`./receiver-state` 指这个目录下的两个根。

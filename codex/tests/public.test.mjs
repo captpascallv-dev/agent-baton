@@ -135,6 +135,63 @@ test('one read deadline leaves a concurrent original send and the engine bridge 
   assert.equal(deliveries(f).length, 1);
 });
 
+test('pipe-closed preflight enters bounded same-pipe recovery and verifies the original actor before delivery', async t => {
+  const f = fixture(t); let at = Date.now(); const e = engine(f, { now: () => at }); const item = job(f);
+  write(f.control, { readRpcError: { code: -32603, message: 'Codex app tools pipe closed' } });
+  e.startWatch(coordinator); await e.tick();
+  assert.equal(e.bridgeUnavailable, true); assert.equal(e.runtimeState, 'adapter_unavailable');
+  assert.equal(e.client.adapterStatus.state, 'unavailable'); assert.equal(e.client.child, null);
+  assert.equal(e.leader, null); assert.equal(central(f, item.id).state, 'pending');
+  assert.equal(fs.existsSync(e.localPath(item.id, 'intent.json')), false);
+  assert.equal(fs.existsSync(path.join(f.mailboxRoot, 'claims', `${item.id}.lock`)), false);
+  assert.equal(sends(f).length, 0);
+  const count = events(f).length; at += 59999; await e.tick(); assert.equal(events(f).length, count);
+  write(f.control, { wrongActor: 'another-actor' }); at += 1; await e.tick();
+  assert.equal(e.bridgeUnavailable, true); assert.equal(e.lastBridgeProbe.status, 'failed');
+  assert.equal(sends(f).length, 0);
+  write(f.control, {}); at += 60000; await e.tick();
+  assert.equal(e.lastBridgeProbe.status, 'verified'); assert.equal(e.bridgeUnavailable, false);
+  assert.equal(central(f, item.id).state, 'sent'); assert.equal(deliveries(f).length, 1);
+  const reads = events(f).filter(event => event.params?.name === 'read_thread');
+  assert.deepEqual(reads.map(event => event.params.arguments.threadId), [owner, actor, actor, owner]);
+  assert.ok(events(f).every(event => event.pipe === 'test-launch-pipe'));
+  assert.ok(reads.every(event => event.params._meta['x-codex-turn-metadata'].thread_id === actor));
+});
+
+test('pipe-closed send stays uncertain after recovery while an independent delivery can proceed', async t => {
+  const f = fixture(t); let at = Date.now(); const e = engine(f, { now: () => at }); const first = job(f);
+  write(f.control, { sendRpcError: { code: -32603, message: 'Codex app tools pipe closed' } });
+  e.startWatch(coordinator); await e.tick();
+  assert.equal(e.bridgeUnavailable, true); assert.equal(central(f, first.id).state, 'sending');
+  assert.equal(readJson(e.localPath(first.id, 'outcome.json')).status, 'uncertain');
+  assert.equal(fs.existsSync(e.localPath(first.id, 'receipt.json')), false);
+  const next = job(f, 'job', '2'); write(f.control, {}); at += 60000; await e.tick();
+  assert.equal(central(f, next.id).state, 'sent');
+  await e.tick();
+  assert.equal(deliverySends(f, first.id).length, 1); assert.equal(deliverySends(f, next.id).length, 1);
+  assert.equal(readJson(e.localPath(first.id, 'outcome.json')).status, 'uncertain');
+  assert.ok(events(f).every(event => event.pipe === 'test-launch-pipe'));
+});
+
+test('unrelated RPC rejections do not trigger pipe recovery or interrupt a concurrent send', async t => {
+  const f = fixture(t); const item = job(f);
+  const e = engine(f, { client: new OfficialTools({ env: f.env, timeoutMs: 1000, sendTimeoutMs: 3000 }) });
+  write(f.control, { sendDelayMs: 1500 }); e.startWatch(coordinator);
+  assert.equal(await e.canPoll(), true); await e.driver.run('scan');
+  const sending = e.processReady(item); await until(() => deliveries(f).length === 1);
+  const originalHost = e.client.child;
+  for (const error of [
+    { code: -32603, message: 'Approval denied: Codex app tools pipe closed' },
+    { code: -32602, message: 'Codex app tools pipe closed' },
+  ]) {
+    write(f.control, { readRpcError: error });
+    await assert.rejects(e.client.readThread(actor), /Official MCP rejection/);
+    assert.equal(e.bridgeUnavailable, false); assert.equal(e.client.child, originalHost);
+  }
+  await sending;
+  assert.equal(central(f, item.id).state, 'sent'); assert.equal(deliveries(f).length, 1);
+});
+
 test('target OS leases exclude a second process, preserve case-sensitive targets and release on holder exit', async t => {
   const f = fixture(t), a = new MailboxDriver({ root: f.mailboxRoot, pythonPath: python }), b = new MailboxDriver({ root: f.mailboxRoot, pythonPath: python });
   f.engines.push({ close() { a.close(); b.close(); } });

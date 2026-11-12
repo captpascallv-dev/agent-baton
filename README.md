@@ -122,7 +122,7 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 | `acp/` ACP 客户端 | Mac 离线实测通过 | Intel macOS 15.7：mock smoke 退出 0；非真实模型调用 |
 | `tools/extract_dialogue.py` | 适用 | 纯 Python |
 | `onestead/` | Mac 离线分片实测通过 | 1312个收集节点均已覆盖；首跑限时后续跑尾片，路径fixture修复后模块7项重跑通过；网页打开本机应用/目录仍不可用 |
-| `codex/` Codex App 叫醒插件 | Mac 离线实测通过；真实唤醒尝试受阻 | 36/36；插件安装、重载和真实 start/status 成功；唯一 READY 预检被官方 `Codex app tools pipe closed` 阻挡，未发送或续接，已停测试守候 |
+| `codex/` Codex App 叫醒插件 | Mac 离线实测通过；真实唤醒仍受阻 | 36/36；插件安装、重载和真实 start/status 成功；READY 预检被官方 `Codex app tools pipe closed` 阻挡。该错误现已进入 60 秒只读恢复，Mac 复测恢复探测仍连不上（插件就绪后 16 秒、Lead 回合未结束时即已断开），未发送或续接；宿主管道诊断进行中 |
 | `studio/` 研究室 | Mac 显式任务目录 live 链路实测 | 共用真实采集器读取假执行者，HTTP 三阶段通过；30 项 Node 测试通过；私人会话不接入，视觉截图未完成 |
 | `watch/` 执行观察窗 | Mac 原生版本已做，有已知差异 | SwiftUI 普通窗口 + 共享 C# CLI/投影；显式任务目录与匹配 PID 的假执行者三阶段实测；核心回归 232/233，一项枚举顺序预算差异待修；WPF 未在 Mac 测 |
 | `hud/` 额度 HUD | Mac 版已做，Codex 主额度实测通过 | SwiftUI 菜单栏应用 + 与 Windows 共用数据层的命令行入口 `CodexUsageHud.Cli`；Intel Mac 用主号真实读取 1 次，与 Windows HUD 和 App 显示一致；浅深色中文界面截图使用六槽模拟数据，未再次读额度；其余槽位默认关闭，会话层级和 token 统计未移植；Windows/WPF 测试套只在 Windows 跑 |
