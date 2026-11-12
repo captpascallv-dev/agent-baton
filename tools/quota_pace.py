@@ -13,7 +13,13 @@ import json
 import os
 import sys
 
-DEFAULT_SNAPSHOT = os.path.expandvars(r'%LOCALAPPDATA%\CodexUsageHUD\quota-snapshot.json')
+def default_snapshot():
+    if sys.platform == 'darwin':
+        return os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', 'CodexUsageHUD', 'quota-snapshot.json')
+    return os.path.expandvars(r'%LOCALAPPDATA%\CodexUsageHUD\quota-snapshot.json')
+
+
+DEFAULT_SNAPSHOT = default_snapshot()
 
 
 def parse_utc(text):
@@ -33,6 +39,9 @@ def main():
     out = []
     for slot in snapshot['slots']:
         for w in slot.get('windows', []):
+            if sys.platform == 'darwin' and w.get('remaining_percent') is None:
+                out.append(f"{slot['slot']:15} {w['pool']:22} left unknown")
+                continue
             rem = float(w['remaining_percent'])
             if not w.get('resets_at_utc'):
                 out.append(f"{slot['slot']:15} {w['pool']:22} left {rem:5.1f}%  no reset time")
