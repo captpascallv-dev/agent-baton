@@ -1,3 +1,34 @@
+# Host pipe closure fix candidate
+
+2026-11-12 (Asia/Taipei), Windows, Node 24.19.0, Python 3.12.10.
+This branch keeps package version 0.5.1; no release or installed-plugin upgrade
+is claimed. Check the actual candidate source when preparing a later upgrade.
+
+The regression test reproduced the reported exact RPC error against unchanged
+production code: the adapter did not enter recovery (expected true, got false).
+After the fix, the following targeted run passed 9 results, including two nested
+revocation cases, with no failures or skips (19.8 seconds, peak 0.23 GiB under a
+2 GiB cap):
+
+```text
+node --test --test-name-pattern "pipe-closed|unrelated RPC|one read deadline|request deadlines stay isolated|revocation during preflight|revocation after leader" codex/tests/public.test.mjs
+node codex/tools/check-public.mjs
+```
+
+Covered: pending/unclaimed state before send, 60-second recovery spacing,
+original launch pipe and actor identity, wrong-actor refusal, successful
+recovery, no replay of an uncertain send, independent later delivery, isolated
+ordinary RPC errors/timeouts, and revocation across asynchronous boundaries.
+The fake host freezes each request's selected behavior before logging it, so
+concurrent-send checks cannot accidentally change an already-observed request.
+
+These are synthetic transport tests using the public ledger. No production
+mailbox, actual notification, installed plugin, shared App restart or Mac was
+operated. The Mac closure's cause and real post-fix wake remain unverified.
+Unchanged paths retain earlier evidence; the full suite was not rerun.
+
+## Preserved 0.5.1 validation
+
 # Public Codex 0.5.1 targeted validation
 
 2026-11-03 (Asia/Taipei), Windows, Node 24.19.0, Python 3.12.10.

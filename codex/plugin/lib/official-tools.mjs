@@ -102,8 +102,16 @@ export class OfficialTools {
       if (!operation) return;
       this.pending.delete(response.id);
       clearTimeout(operation.timer);
-      if (response.error) operation.reject(new Error(this.safeError(`Official MCP rejection: ${JSON.stringify(response.error)}`)));
-      else operation.resolve(response.result);
+      if (response.error) {
+        const error = new Error(this.safeError(`Official MCP rejection: ${JSON.stringify(response.error)}`));
+        operation.reject(error);
+        // The official child can stay alive after its host socket closes. Route
+        // this exact native transport error through the existing health probe;
+        // ordinary RPC refusals and request deadlines must remain isolated.
+        if (response.error.code === -32603 && response.error.message === 'Codex app tools pipe closed') {
+          this.transportFailed(error);
+        }
+      } else operation.resolve(response.result);
     });
     // Drain stderr; do not write host output or pipe details to protocol stdout.
     child.stderr.on('data', () => {});
