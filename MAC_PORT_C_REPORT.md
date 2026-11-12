@@ -50,3 +50,44 @@ NOT RETESTED after this fix. Pascal's previous one-shot retry permission was con
 
 ## Remaining limits
 Real post-fix dispatch, actual plugin install/restart/wake, and any Mac App UI interaction remain unperformed. Linux code path uses standard POSIX APIs but was not executed on Linux here. Windows runtime suite was not rerun on Windows; source branch unchanged was verified. Do not treat this offline delivery as full plugin-wake acceptance.
+
+## Owner-authorized live continuation
+
+Pascal subsequently explicitly authorized one post-fix tiny dispatch, installing the repository wake plugin, one normal App restart, and one real wake test.
+
+### Post-fix real dispatch: PASS
+Exactly one `gpt-6.1-sol` / `xhigh` / default service-tier (Fast off) tiny job was dispatched. Only Dispatch was inside its 1GB/45s guard; the executor separately used 1.5GB/180s. Dispatch exited 0 in 2.3s; the executor survived independently. `hello.txt` matched `MAC-C-SMOKE-OK\n` byte-for-byte and READY.json declared completed with the expected deliverables. The local waiter exited 0 (24.2s/0.01GB). After the owner's App restart/reconnection, the original job's `exit_code.txt` and `terminal.json` both reported 0, with host_pid = owner.pid = terminal.pid. No repeat dispatch was made. This resolves the missing runner exit-record check from card B.
+
+### Authorized plugin installation and restart
+The supported `codex plugin marketplace add .` and `codex plugin add codex-mail-wake@agent-lead-wake` both exited 0. Installed version 0.5.1 in the normal Codex plugin cache under marketplace agent-lead-wake. No other plugin was changed. The owner reported manually restarting the App and creating a conversation titled “待命”; supported list/read APIs verified that conversation, not filesystem session records. Direct App UI was not bypassed.
+
+A new dedicated plugin default config (none previously existed) points only at task-owned test ledger/state directories with this verified Lead as coordinator. One fake delivery was registered. Exact private local paths and conversation identity are intentionally omitted here. Installation remains as requested; later rollback can use the supported plugin remove command, and only this task-created config can be moved to Trash after stopping its watcher. Preserve receipts and claims until testing is reconciled; do not remove other plugin state.
+
+### Wake setup blocked at host MCP startup (diagnosed)
+The official supported send/read-thread APIs were used on the verified standby
+conversation to request project-scoped watch setup. It reported that
+start_app_mailbox_watch and app_mailbox_status were absent, so it did not start
+watching. The one fake outbox has NO READY marker; no notification or wake reply
+is claimed.
+
+The host application log records initialization connection closure for
+codex_mail_wake at 14:04:19, 14:04:54, 14:05:03 and 14:05:17 UTC. The complete
+test configuration was created at 14:06:58 UTC, after the newly created Lead was
+identified. The server loads/validates mandatory configuration before responding
+to initialize; absent configuration exits immediately. Current loadConfig
+validation passes. A bounded standalone read-only initialize/tools-list check
+of the installed server exited 0, with six expected tools and no stderr. It did
+not call start-watch or supply invented actor metadata.
+
+Thus the initial host discovery failed before the config existed; current
+standalone startup works. Host reconnect/reload is still required for actual
+watch setup. Available CLI MCP management and supported App tools exposed no
+reconnect operation. No second restart, uninstall/reinstall loop, private
+session read or UI bypass was attempted. The owner coordinator is handling the
+smallest supported next step. A successful App restart alone is not a successful
+wake test.
+
+Official troubleshooting reference reviewed:
+https://developers.openai.com/plugins/deploy/troubleshooting
+It recommends separating server/discovery/client issues; it does not establish
+an available Desktop reconnect command for this installation.
