@@ -936,7 +936,7 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBlock Text="{Binding DelayText}" FontSize="11" Margin="0,1,0,0"
+                                        <TextBlock Text="{Binding DelayText}" FontSize="11" Padding="0,1,0,0"
                                                    Foreground="{StaticResource HudMuted}" TextWrapping="Wrap"
                                                    Visibility="{Binding UpdateDelayed, Converter={StaticResource BoolVisibility}}" />
                                     </StackPanel>

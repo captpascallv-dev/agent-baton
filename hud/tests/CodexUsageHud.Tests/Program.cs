@@ -12831,7 +12831,7 @@ internal static partial class Program
     {
         var notes = new StringBuilder();
         notes.AppendLine("SYNTHETIC Claude delay top rail. No live quota and no account content.");
-        notes.AppendLine("wide ordinary 1100x78, delayed 1100x104, recovery 1100x78.");
+        notes.AppendLine("wide ordinary 1100x78, delayed 1100x112, recovery 1100x78.");
         notes.AppendLine("narrow ordinary and recovery are 640x96; delayed narrow is 640x112 so the wrapped age stays inside the seven-slot rail.");
         try
         {
@@ -12845,7 +12845,7 @@ internal static partial class Program
             AssertClaudeTopDelayCleared(window, "60%", "ordinary_wide", notes);
 
             ApplyClaudeTopState(window, viewModel, capture.Board, 1920, 1080, expand: false);
-            AssertClaudeTopSize(window, viewModel, 1100, 104, false, "delayed_wide", notes);
+            AssertClaudeTopSize(window, viewModel, 1100, 112, false, "delayed_wide", notes);
             AssertClaudeTopDelayFits(window, "delayed_wide", notes);
             var widePath = Path.Combine(output, "claude-delay-top-1100.png");
             RenderWindow(window, widePath);
@@ -12942,11 +12942,23 @@ internal static partial class Program
         var shellBounds = new System.Windows.Rect(0, 0, shell.ActualWidth, shell.ActualHeight);
         var buttonBounds = button.TransformToAncestor(shell).TransformBounds(
             new System.Windows.Rect(0, 0, button.ActualWidth, button.ActualHeight));
+        button.ApplyTemplate();
+        var slotChrome = button.Template.FindName("Chrome", button) as System.Windows.Controls.Border
+            ?? throw new InvalidOperationException(label + "_slot_chrome_missing");
+        var chromeBoundsLocal = new System.Windows.Rect(0, 0, slotChrome.ActualWidth, slotChrome.ActualHeight);
+        var radius = slotChrome.CornerRadius.TopLeft;
+        var roundedChrome = new System.Windows.Media.RectangleGeometry(chromeBoundsLocal, radius, radius);
+        var presenter = FindVisualChild<System.Windows.Controls.ContentPresenter>(slotChrome)
+            ?? throw new InvalidOperationException(label + "_slot_content_missing");
+        var contentBounds = presenter.TransformToAncestor(slotChrome).TransformBounds(
+            new System.Windows.Rect(0, 0, presenter.ActualWidth, presenter.ActualHeight));
         notes.AppendLine(label + " slot_bounds=" + buttonBounds.ToString(CultureInfo.InvariantCulture));
         System.Windows.Rect? percentBounds = null;
         System.Windows.Rect? delayBounds = null;
         foreach (var block in blocks)
         {
+            Assert.True(!block.IsVisible || (block.ActualWidth >= 1d && block.ActualHeight >= 1d),
+                label + "_visible_block_empty:" + block.Text);
             if (block.ActualWidth < 1d || block.ActualHeight < 1d) continue;
             var bounds = block.TransformToAncestor(shell).TransformBounds(
                 new System.Windows.Rect(0, 0, block.ActualWidth, block.ActualHeight));
@@ -12964,6 +12976,19 @@ internal static partial class Program
                 bounds.Right <= buttonBounds.Right + 1.5d && bounds.Bottom <= buttonBounds.Bottom + 1.5d;
             Assert.True(inside, label + "_clipped:" + block.Text);
             Assert.True(verticalShort <= 1.5d && horizontalShort <= 1.5d, label + "_arranged_short:" + block.Text);
+            if (block.IsVisible)
+            {
+                var visibleBounds = block.TransformToAncestor(slotChrome).TransformBounds(
+                    new System.Windows.Rect(0, 0, block.ActualWidth, block.ActualHeight));
+                notes.AppendLine(label + " visible_bounds=" + visibleBounds.ToString(CultureInfo.InvariantCulture) +
+                    " content_bounds=" + contentBounds.ToString(CultureInfo.InvariantCulture));
+                Assert.True(block.ActualHeight + 0.5d >= block.DesiredSize.Height,
+                    label + "_desired_height_short:" + block.Text + " desired=" + block.DesiredSize.Height + " actual=" + block.ActualHeight);
+                Assert.True(contentBounds.Contains(visibleBounds) &&
+                    roundedChrome.FillContains(visibleBounds.TopLeft) && roundedChrome.FillContains(visibleBounds.TopRight) &&
+                    roundedChrome.FillContains(visibleBounds.BottomLeft) && roundedChrome.FillContains(visibleBounds.BottomRight),
+                    label + "_outside_visible_slot:" + block.Text);
+            }
             if (ReferenceEquals(block, percent)) percentBounds = bounds;
             if (ReferenceEquals(block, delay)) delayBounds = bounds;
         }
