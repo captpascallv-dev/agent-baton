@@ -204,3 +204,44 @@ The owner subsequently explicitly approved one tiny dispatch using the Mac main 
 Computer Use explicitly refused the App with: `Computer Use is not allowed to use the app 'com.openai.codex' for safety reasons.` No alternate screenshot, AppleScript, or UI access route was used to bypass that refusal. Therefore numerical agreement with the App is NOT established. A user-provided App quota screenshot would allow comparison with the timestamped read above.
 
 Overall status remains PARTIAL: live read works; real dispatch delivery and App parity do not pass. Original Windows/WPF test gap also remains. No repeated model dispatch or repeated quota read was made.
+
+## Separately authorized retry and user screenshot comparison
+
+Pascal personally authorized exactly one additional tiny retry after the first
+startup failure. No additional quota read was made.
+
+### Real delivery: PASS on the authorized retry
+- Kept Dispatch and waiter in one guarded foreground lifetime; the actual Codex
+  executor retained its separate 1.5GB/180s cap. Outer cap 2GB/265s.
+- Actual CLI session reported `gpt-6.1-sol`, reasoning `xhigh`, service tier
+  `default` (not Fast), workspace-write, ephemeral operation. One invocation
+  only for this retry. No visible App conversation was created.
+- `hello.txt` was independently checked byte-for-byte against
+  `MAC-B-SMOKE-OK\n`. REPORT.md existed. READY.json was valid JSON with
+  status `completed` and the expected two deliverables.
+- `wait_delivery.py` returned **0**, state `ready`, ready_status `completed`.
+  The outer guarded run returned **0**, elapsed **51.5s**, sampled peak **0.52GB**.
+  The CLI final message described the same files and reported **14,470 tokens**.
+- Total: two separately authorized Dispatch calls across the failed initial
+  attempt and retry; the retry is the only observed model execution. No third
+  attempt and no repeated quota query.
+- Remaining bookkeeping gap: despite waiting an additional 20 seconds after
+  delivery, the detached PowerShell wrapper did not leave exit_code.txt or
+  terminal.json before outer cleanup. Therefore no executor-wrapper exit code
+  is claimed. No matching test processes remained afterward. Artifact delivery
+  and watcher success are verified independently of this missing exit record.
+
+### Quota comparison from owner-provided Windows App screenshot
+The owner provided the main account's **Windows App** usage screenshot to the
+coordinator around 21:11 Taipei. The coordinator reported it shows **88% weekly
+remaining**, reset in **6 days 4 hours**. This agrees at the displayed coarse
+precision with the single 21:08:33 Taipei CLI snapshot (88%, reset Nov 19
+01:43:55 Taipei). This is NOT direct Mac App UI verification; the Mac Computer
+Use restriction remains. The screenshot, account identity, and private App
+content are not committed or shared here.
+
+Current acceptance: real artifact dispatch + local waiter PASS; single live
+quota read PASS; user-supplied Windows App comparison consistent. Remaining
+limits: direct Mac App UI parity unverified, Windows/WPF suite not run here,
+and executor-wrapper terminal bookkeeping absent on this retry. Earlier
+historical failures above are retained rather than overwritten.
