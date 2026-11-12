@@ -1,5 +1,5 @@
 import http from "node:http";
-import { readFile, realpath, stat } from "node:fs/promises";
+import { readFile, realpath, stat, lstat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
@@ -38,6 +38,12 @@ export async function loadConfig(filename) {
     refreshSeconds: raw.refreshSeconds ?? 5,
     staleAfterSeconds: raw.staleAfterSeconds ?? 60,
   };
+  if (raw.allowedRoot != null) config.allowedRoot = requiredPath(raw.allowedRoot, "allowedRoot", base);
+  if (raw.allowedPids != null) {
+    if (!Array.isArray(raw.allowedPids) || raw.allowedPids.some(pid => !Number.isSafeInteger(pid) || pid < 1))
+      throw new Error("allowedPids must contain positive process IDs.");
+    config.allowedPids = raw.allowedPids;
+  }
   if (raw.codexCliStateRoot != null || raw.codexCliHome != null) {
     config.codexCliStateRoot = requiredPath(raw.codexCliStateRoot, "codexCliStateRoot", base);
     config.codexCliHome = requiredPath(raw.codexCliHome, "codexCliHome", base);
@@ -50,6 +56,28 @@ export async function loadConfig(filename) {
     || within(config.snapshotPath, config.cliWatchRuntimeDirectory)
     || config.snapshotPath === config.cliWatchConfig || config.snapshotPath === path.resolve(filename))
     throw new Error("snapshotPath must be independent of static files and CLI Watch inputs.");
+  return config;
+}
+
+// Mac launch is fixture-scoped. No auto-discovered home or App/session inputs.
+export async function validateMacConfig(config, filename) {
+  if (!config.allowedRoot || !path.isAbsolute(config.allowedRoot)) throw new Error("Mac requires an explicit allowedRoot.");
+  const root = await realpath(config.allowedRoot);
+  if (root !== path.resolve(config.allowedRoot) || root === path.parse(root).root)
+    throw new Error("allowedRoot must be a canonical task fixture directory.");
+  async function checked(candidate) {
+    const full = path.resolve(candidate);
+    if (!within(full, root) || /(?:^|[/\\])\.codex[/\\]sessions(?:[/\\]|$)/i.test(full))
+      throw new Error("Mac fixture boundary rejected.");
+    let current = root;
+    for (const part of path.relative(root, full).split(path.sep).filter(Boolean)) {
+      current = path.join(current, part);
+      try { if ((await lstat(current)).isSymbolicLink()) throw new Error("Mac fixture symlink rejected."); }
+      catch (error) { if (error.code !== "ENOENT") throw error; }
+    }
+  }
+  await checked(filename); await checked(config.cliWatchConfig); await checked(config.snapshotPath);
+  if (config.codexCliStateRoot || config.codexCliHome) throw new Error("Private runtime overlays are disabled on Mac.");
   return config;
 }
 
@@ -129,6 +157,8 @@ export class BridgeSupervisor {
       this.child = this.spawnProcess(this.config.bridgeExecutable, [
         "--config", this.config.cliWatchConfig, "--snapshot", this.config.snapshotPath,
         "--refresh-seconds", String(this.config.refreshSeconds), "--parent-pid", String(process.pid),
+        ...(this.config.allowedRoot ? ["--allowed-root", this.config.allowedRoot,
+          ...(this.config.allowedPids ?? []).flatMap(pid => ["--allowed-pid", String(pid)])] : []),
       ], { cwd: path.dirname(this.config.bridgeExecutable), windowsHide: true, stdio: "ignore" });
       this.child.once("error", () => { this.store.bridgeFailure = "本机状态桥接启动失败，请检查桥接程序。"; });
       this.child.once("exit", () => {
@@ -173,7 +203,10 @@ export function createStudioServer(config, options = {}) {
   const clientDirectory = options.clientDirectory ?? path.join(rootDirectory, "dist/client");
   const store = demo ? null : options.store ?? new SnapshotStore(config.snapshotPath, config.staleAfterSeconds);
   const supervisor = demo ? null : new BridgeSupervisor(config, store, options.spawnProcess);
-  const runtime = demo || options.runtime === false ? null : options.runtime ?? new AgentRuntimeStore({
+  // Mac observes only the explicit mailbox bridge. Never infer private App or
+  // session-store coverage from the host user's home directory.
+  const runtime = demo || options.runtime === false || (process.platform === "darwin" && options.runtime == null)
+    ? null : options.runtime ?? new AgentRuntimeStore({
     collectOptions: { dshStatusDirectory: path.join(path.dirname(config.snapshotPath), 'dsh-status'),
       claudeStatusDirectory: path.join(path.dirname(config.snapshotPath), 'claude-status'),
       codexCliStateRoot: config.codexCliStateRoot, codexCliHome: config.codexCliHome,
@@ -252,9 +285,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     const demoSnapshot = demo ? JSON.parse(await readFile(path.join(rootDirectory, "demo", "snapshot.json"), "utf8")) : null;
     if (demo && (demoSnapshot?.schemaVersion !== 1 || demoSnapshot.mode !== "demo" || !Array.isArray(demoSnapshot.projects) || !demoSnapshot.agentRuntime))
       throw new Error("Demo snapshot is invalid.");
+    const liveConfig = demo ? null : await loadConfig(process.argv[3]);
+    if (!demo && process.platform === "darwin") await validateMacConfig(liveConfig, process.argv[3]);
     const app = demo
       ? createStudioServer({ port }, { mode: "demo", demoSnapshot })
-      : createStudioServer(await loadConfig(process.argv[3]));
+      : createStudioServer(liveConfig);
     const address = await app.listen();
     console.log((demo ? "AI Moe Studio demo: http://127.0.0.1:" : "AI Moe Studio live: http://127.0.0.1:") + address.port);
     let stopping = false;

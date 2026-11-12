@@ -1,12 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <DefineConstants Condition="$([MSBuild]::IsOSPlatform('OSX'))">$(DefineConstants);STUDIO_MAC</DefineConstants>
     <AssemblyName>CliWatch.Collection</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
-  <ItemGroup>
+  <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('OSX'))">
     <Reference Include="CliWatch.Contracts"><HintPath>$(CliWatchRuntimeDirectory)/CliWatch.Contracts.dll</HintPath><ExternallyResolved>true</ExternallyResolved></Reference>
+  </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <ProjectReference Include="../../../watch/src/CliWatch.Contracts/CliWatch.Contracts.csproj" />
+    <ProjectReference Include="../../../watch/src/CliWatch.Mac/CliWatch.Mac.csproj" />
   </ItemGroup>
 </Project>

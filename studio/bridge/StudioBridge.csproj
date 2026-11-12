@@ -1,13 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework Condition="!$([MSBuild]::IsOSPlatform('OSX'))">net8.0-windows</TargetFramework>
+    <TargetFramework Condition="$([MSBuild]::IsOSPlatform('OSX'))">net8.0</TargetFramework>
+    <DefineConstants Condition="$([MSBuild]::IsOSPlatform('OSX'))">$(DefineConstants);STUDIO_MAC</DefineConstants>
     <OutputType>Exe</OutputType>
     <AssemblyName>AiMoeStudio.Bridge</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
-  <ItemGroup>
+  <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('OSX'))">
     <Reference Include="CliWatch.App"><HintPath>$(CliWatchRuntimeDirectory)/CliWatch.App.dll</HintPath></Reference>
     <Reference Include="CliWatch.Contracts"><HintPath>$(CliWatchRuntimeDirectory)/CliWatch.Contracts.dll</HintPath></Reference>
     <ProjectReference Include="collection/AiMoeStudio.Collection.csproj" />
@@ -18,11 +20,18 @@
   <ItemGroup>
     <Reference Update="@(Reference)"><ExternallyResolved>true</ExternallyResolved></Reference>
   </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <ProjectReference Include="../../watch/src/CliWatch.Mac/CliWatch.Mac.csproj" />
+    <ProjectReference Include="../../watch/src/CliWatch.Normalization/CliWatch.Normalization.csproj" />
+    <ProjectReference Include="../../watch/src/CliWatch.Projection/CliWatch.Projection.csproj" />
+    <ProjectReference Include="collection/AiMoeStudio.Collection.csproj" />
+    <Compile Include="../../watch/src/CliWatch.Views/*.cs" Exclude="../../watch/src/CliWatch.Views/*.xaml.cs" Link="SharedViews/%(Filename)%(Extension)" />
+  </ItemGroup>
   <ItemGroup>
     <Compile Remove="collection/**/*.cs" />
     <Compile Remove="tests/**/*.cs" />
   </ItemGroup>
-  <Target Name="RequireInstalledRuntime" BeforeTargets="ResolveAssemblyReferences">
+  <Target Name="RequireInstalledRuntime" BeforeTargets="ResolveAssemblyReferences" Condition="!$([MSBuild]::IsOSPlatform('OSX'))">
     <Error Condition="'$(CliWatchRuntimeDirectory)' == '' Or !Exists('$(CliWatchRuntimeDirectory)/CliWatch.App.dll')" Text="Pass -p:CliWatchRuntimeDirectory with the installed CLI Watch DLL directory." />
   </Target>
 </Project>

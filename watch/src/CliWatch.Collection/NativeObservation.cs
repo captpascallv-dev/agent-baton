@@ -23,9 +23,16 @@ public sealed partial class MailboxCollector
         if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path)) return false;
         try
         {
+#if WATCH_MAC
+            // Full-target gate checks its fixed ancestors for symlinks without
+            // granting collector read/enumeration access to those ancestors.
+            WatchReadBoundary.Check(path);
+            return true;
+#else
             for (var p = Path.GetFullPath(path); !string.IsNullOrEmpty(p); p = Path.GetDirectoryName(p))
                 if ((File.Exists(p) || Directory.Exists(p)) && (File.GetAttributes(p) & FileAttributes.ReparsePoint) != 0) return false;
             return true;
+#endif
         }
         catch (Exception) { return false; }
     }

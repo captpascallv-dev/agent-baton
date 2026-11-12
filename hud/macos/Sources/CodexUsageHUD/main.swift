@@ -51,7 +51,7 @@ func date(_ value: String?) -> Date? {
             if snapshot != nil { objectWillChange.send(); return }
             let f = ISO8601DateFormatter()
             snapshot = Snapshot(schema: 1, written_at_utc: f.string(from: Date()), slots: [
-                Slot(slot: "codex_primary", label: "Codex", state: "ok", windows: [QuotaWindow(pool: "codex_primary_window", remaining_percent: 72, resets_at_utc: f.string(from: Date().addingTimeInterval(8100))), QuotaWindow(pool: "codex_secondary_window", remaining_percent: 84, resets_at_utc: f.string(from: Date().addingTimeInterval(172800)))]),
+                Slot(slot: "codex_primary", label: "Codex主", state: "ok", windows: [QuotaWindow(pool: "codex_primary_window", remaining_percent: 72, resets_at_utc: f.string(from: Date().addingTimeInterval(8100))), QuotaWindow(pool: "codex_secondary_window", remaining_percent: 84, resets_at_utc: f.string(from: Date().addingTimeInterval(172800)))]),
                 Slot(slot: "claude", label: "Claude", state: "disabled", windows: []),
                 Slot(slot: "cursor", label: "Cursor", state: "disabled", windows: [])])
             return
@@ -66,7 +66,7 @@ func date(_ value: String?) -> Date? {
             snapshot = value
             problem = nil
         } catch {
-            problem = "Snapshot unavailable"
+            problem = "快照不可用"
             // Never present a previous reading as a newly successful observation.
         }
     }
@@ -91,45 +91,49 @@ struct Panel: View {
     let clock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State private var now = Date()
     func countdown(_ value: String?) -> String {
-        guard let reset = date(value) else { return "Reset time unavailable" }
+        guard let reset = date(value) else { return "重置时间未提供" }
         let seconds = max(0, Int(reset.timeIntervalSince(now)))
-        if seconds == 0 { return "Reset due · awaiting refresh" }
-        return seconds >= 86400 ? "Resets in \(seconds / 86400)d \(seconds % 86400 / 3600)h" : "Resets in \(seconds / 3600)h \(seconds % 3600 / 60)m"
+        if seconds == 0 { return "已到重置时间 · 等待刷新" }
+        return seconds >= 86400 ? "距离重置 \(seconds / 86400)天 \(seconds % 86400 / 3600)小时" : "距离重置 \(seconds / 3600)小时 \(seconds % 3600 / 60)分钟"
+    }
+    func windowLabel(_ pool: String) -> String {
+        let labels = ["codex_primary_window": "主窗口", "codex_secondary_window": "次窗口", "codex_weekly": "每周窗口", "codex": "额度窗口", "cursor_auto": "Auto 窗口", "cursor_api": "API 窗口", "cursor_team": "团队共用", "grok_weekly": "每周窗口", "grok_bot": "Bot 窗口", "claude_five_hour": "5 小时窗口", "claude_seven_day": "每周全部模型"]
+        return labels[pool] ?? "额度窗口（\(pool)）"
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
                 Image(systemName: "chart.donut").foregroundStyle(.blue)
-                Text("Usage").font(.headline)
+                Text("额度").font(.headline)
                 Spacer()
-                Text(store.isDemo ? "DEMO" : store.stale ? "STALE" : "READ ONLY").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                Text(store.isDemo ? "演示" : store.stale ? "已过期" : "只读").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text("Codex remaining").font(.subheadline).foregroundStyle(.secondary)
+                Text("Codex 剩余额度").font(.subheadline).foregroundStyle(.secondary)
                 Text(store.menuTitle).font(.system(size: 52, weight: .semibold, design: .rounded)).monospacedDigit()
                 if let value = store.percent { ProgressView(value: value, total: 100).tint(.blue) }
             }
             Divider()
             ForEach(store.snapshot?.slots ?? []) { slot in
                 VStack(alignment: .leading, spacing: 7) {
-                    HStack { Text(slot.label).font(.subheadline.weight(.medium)); Spacer(); Text(slot.state == "disabled" ? "Off" : slot.state.capitalized).font(.caption).foregroundStyle(.secondary) }
+                    HStack { Text(slot.label).font(.subheadline.weight(.medium)); Spacer(); Text(["disabled": "已关闭", "ok": "可用", "stale": "已过期", "unavailable": "不可用"][slot.state] ?? "未知").font(.caption).foregroundStyle(.secondary) }
                     ForEach(Array(slot.windows.enumerated()), id: \.offset) { _, window in
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(window.pool == "codex_primary_window" ? "Primary window" : window.pool == "codex_secondary_window" ? "Weekly window" : window.pool).font(.caption)
-                                Text(!store.stale && slot.state == "ok" ? countdown(window.resets_at_utc) : "Reset time unavailable").font(.caption2).foregroundStyle(.secondary)
+                                Text(windowLabel(window.pool)).font(.caption)
+                                Text(!store.stale && slot.state == "ok" ? countdown(window.resets_at_utc) : "重置时间未提供").font(.caption2).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text(store.usable(window, in: slot).map { String(format: "%.0f%%", $0) } ?? "—").monospacedDigit().font(.subheadline.weight(.medium))
+                            Text(store.usable(window, in: slot).map { String(format: "%.0f%%", $0) } ?? "未知").monospacedDigit().font(.subheadline.weight(.medium))
                         }
                     }
                 }
             }
             if let problem = store.problem { Text(problem).font(.caption).foregroundStyle(.orange) }
             HStack {
-                Text(store.isDemo ? "Sample data · no account accessed" : store.stale ? "Last observation · not live" : "Snapshot updated locally").font(.caption2).foregroundStyle(.secondary)
+                Text(store.isDemo ? "模拟数据 · 未访问账号" : store.stale ? "上次观测 · 非实时" : "本地快照已更新").font(.caption2).foregroundStyle(.secondary)
                 Spacer()
-                Button { NSApplication.shared.terminate(nil) } label: { Image(systemName: "power") }.buttonStyle(.borderless).help("Quit")
+                Button { NSApplication.shared.terminate(nil) } label: { Image(systemName: "power") }.buttonStyle(.borderless).help("退出")
             }
         }.padding(22).frame(width: 320)
         .onReceive(clock) { now = $0 }
@@ -166,7 +170,7 @@ struct Panel: View {
         if let button = item.button {
             button.title = Store.shared.menuTitle
             button.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-            button.image = NSImage(systemSymbolName: "chart.donut", accessibilityDescription: "Usage")
+            button.image = NSImage(systemSymbolName: "chart.donut", accessibilityDescription: "额度")
             button.imagePosition = .imageLeading
             button.target = self
             button.action = #selector(togglePopover(_:))
@@ -214,7 +218,7 @@ struct Panel: View {
     private func showPreview() {
         let size = panelSize()
         let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: 180, y: 180), size: size), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Usage · Preview"
+        window.title = "额度 · 预览"
         window.contentView = NSHostingView(rootView: panelView(size))
         window.appearance = requestedAppearance
         window.center()

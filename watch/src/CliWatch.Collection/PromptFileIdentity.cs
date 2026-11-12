@@ -454,9 +454,9 @@ internal static class PromptFileIdentity
                 if (policy.Read(full) is null) return false;
                 limit = Math.Min(limit, policy.MaxBytes);
             }
-            var info = new FileInfo(full);
+            var info = new FileInfo(WatchReadBoundary.Check(full));
             if (!info.Exists || info.Length <= 0 || info.Length > limit) return false;
-            using var stream = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var stream = new FileStream(WatchReadBoundary.Check(full), FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             var buffer = new byte[81920];
             int read;
@@ -528,6 +528,10 @@ internal static class PromptFileIdentity
 
     static bool ContainsReparsePoint(string fullPath)
     {
+#if WATCH_MAC
+        try { WatchReadBoundary.Check(fullPath); return false; }
+        catch (Exception) { return true; }
+#else
         var root = Path.GetPathRoot(fullPath);
         if (string.IsNullOrEmpty(root)) return true;
         if (HasReparse(root)) return true;
@@ -540,6 +544,7 @@ internal static class PromptFileIdentity
         }
 
         return false;
+#endif
     }
 
     static bool HasReparse(string path)
@@ -942,7 +947,7 @@ internal static class PromptFileBindingStore
         if (!File.Exists(path)) return true;
         try
         {
-            var info = new FileInfo(path);
+            var info = new FileInfo(WatchReadBoundary.Check(path));
             if (info.Length <= 0 || info.Length > MaxStoreBytes)
             {
                 error = "unreadable";

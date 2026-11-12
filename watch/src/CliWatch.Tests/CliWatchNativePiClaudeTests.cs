@@ -12,9 +12,16 @@ namespace CliWatch.Tests;
 public sealed class CliWatchNativePiClaudeTests
 {
     const string Sentinel = "BODY_SENTINEL_claude_do_not_store";
+#if MAC_PORT_TESTS
+    // Fake POSIX entry paths exercise the Mac navigation projection; no files are read.
+    const string Earendil = "/fixture/pkg/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js";
+    const string Mario = "/fixture/pkg/node_modules/@mariozechner/pi-coding-agent/dist/bundle/cli.js";
+    const string Mixed = "/fixture/npm global/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js";
+#else
     const string Earendil = @"C:\pkg\node_modules\@earendil-works\pi-coding-agent\dist\bundle\cli.js";
     const string Mario = @"C:\pkg\node_modules\@mariozechner\pi-coding-agent\dist\bundle\cli.js";
     const string Mixed = @"C:\Users\Example\AppData\Roaming\npm/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js";
+#endif
 
     [Fact]
     public async Task Node_pi_entry_is_visible_and_prompt_node_shell_are_not()

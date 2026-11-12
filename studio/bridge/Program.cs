@@ -3,6 +3,9 @@ using CliWatch.Collection;
 using CliWatch.Normalization;
 using CliWatch.Projection;
 using AiMoeStudio.Bridge;
+#if STUDIO_MAC
+using CliWatch.Mac;
+#endif
 
 if (args.SequenceEqual(new[] { "--self-test" }))
 {
@@ -19,6 +22,10 @@ string? configPath = null, snapshotPath = null;
 var refreshSeconds = 5;
 var once = false;
 int? parentPid = null;
+#if STUDIO_MAC
+string? allowedRoot = null;
+var allowedPids = new List<int>();
+#endif
 try
 {
     for (var i = 0; i < args.Length; i++)
@@ -32,6 +39,13 @@ try
                     throw new ArgumentException();
                 break;
             case "--once": once = true; break;
+#if STUDIO_MAC
+            case "--allowed-root": allowedRoot = Path.GetFullPath(args[++i]); break;
+            case "--allowed-pid":
+                if (!int.TryParse(args[++i], out var allowedPid) || allowedPid < 1) throw new ArgumentException();
+                allowedPids.Add(allowedPid);
+                break;
+#endif
             case "--parent-pid":
                 if (!int.TryParse(args[++i], out var parsedPid) || parsedPid < 1) throw new ArgumentException();
                 parentPid = parsedPid;
@@ -40,19 +54,37 @@ try
         }
     }
     if (configPath is null || snapshotPath is null) throw new ArgumentException();
+#if STUDIO_MAC
+    if (allowedRoot is null) throw new ArgumentException();
+    FixtureBoundary.CheckedPath(configPath, allowedRoot);
+    FixtureBoundary.CheckedPath(snapshotPath, allowedRoot);
+    StudioReadBoundary.AllowedRoot = allowedRoot;
+#endif
     OutputBoundary.RequireIndependent(snapshotPath, configPath, null);
 }
 catch (Exception)
 {
+#if STUDIO_MAC
+    Console.Error.WriteLine("Usage: AiMoeStudio.Bridge --config <fixture config> --snapshot <independent output.json> --allowed-root <task fixture directory> [--allowed-pid PID] [--refresh-seconds 5] [--once]");
+#else
     Console.Error.WriteLine("Usage: AiMoeStudio.Bridge --config <CLI Watch config> --snapshot <independent output.json> [--refresh-seconds 5] [--once]");
+#endif
     return 2;
 }
 
 using var cancel = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancel.Cancel(); };
 using var parent = ParentLifetime.Attach(parentPid, cancel);
+#if STUDIO_MAC
+var macOwners = FixtureBoundary.OwnerIdentities(allowedRoot!);
+var macSnapshot = new MacProcessSnapshot(allowedPids.Count > 0 ? allowedPids : macOwners.Keys, macOwners);
+#endif
 using var refresh = new RefreshService(
+#if STUDIO_MAC
+    new MailboxCollector(macSnapshot, new MacProcessProbe(macSnapshot), promptBindingDirectory: null),
+#else
     new MailboxCollector(new WindowsProcessSnapshot(), new WindowsProcessProbe(), promptBindingDirectory: null),
+#endif
     new LinkedIdentityNormalizer(new IdentityNormalizer()), new CliWatchProjector());
 
 // Keep the collector's activity baselines/budget cursors and projector's previous frame.
@@ -65,8 +97,13 @@ do
     try
     {
         var config = BridgeConfig.Load(configPath);
+#if STUDIO_MAC
+        var collectorSettings = FixtureBoundary.Validate(config, allowedRoot!);
+#else
+        var collectorSettings = config.ToCollectorSettings();
+#endif
         OutputBoundary.RequireIndependent(snapshotPath, configPath, config);
-        var result = await refresh.RefreshAsync(config.ToCollectorSettings(), cancel.Token);
+        var result = await refresh.RefreshAsync(collectorSettings, cancel.Token);
         if (result.Canceled) break;
         if (result.Succeeded && result.Snapshot is not null)
         {
@@ -96,7 +133,16 @@ do
         lastSucceeded = false;
     }
 
-    try { await AtomicSnapshot.WriteAsync(snapshotPath, state.Export()); }
+    try
+    {
+#if STUDIO_MAC
+        // Recheck on every publish, not only at startup: a source directory may
+        // have been replaced with a link while the long-lived bridge was running.
+        FixtureBoundary.CheckedPath(snapshotPath, allowedRoot!);
+        FixtureBoundary.RequireNoLinks(snapshotPath);
+#endif
+        await AtomicSnapshot.WriteAsync(snapshotPath, state.Export());
+    }
     catch (Exception)
     {
         // Exception messages can include source paths and evidence; never emit them.

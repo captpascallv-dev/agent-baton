@@ -85,3 +85,35 @@ self-test 使用内存夹具验证运行、明确等待、交卷未验收、未�
     AiMoeStudio.Bridge.exe --config "<CLI Watch config>" --snapshot "<independent snapshot.json>" --once
 
 常驻数据放在外置配置指定的状态目录，不要和仓库或 CLI Watch 的输入目录放在一起。
+
+## macOS fixture-scoped bridge (Card D)
+
+The Mac branch builds `net8.0` from shared Contracts/Normalization/Projection,
+non-WPF Views source and `CliWatch.Mac`; it compiles Studio's own Collection once.
+It does not reference Windows App/WPF DLLs. Windows retains the installed-runtime
+build path above.
+
+```sh
+dotnet build studio/bridge/StudioBridge.csproj -c Release -m:1 -p:UseSharedCompilation=false
+# Explicit canonical task-fixture paths, never a user's home/session directory:
+studio/bridge/bin/Release/net8.0/AiMoeStudio.Bridge \
+  --config /TASK_FIXTURE/watch.json --snapshot /TASK_FIXTURE/output/snapshot.json \
+  --allowed-root /TASK_FIXTURE --once
+sh studio/start-studio.sh --config /TASK_FIXTURE/studio.json
+```
+
+Mac `studio.json` uses the existing config fields plus `allowedRoot` and optional
+`allowedPids` (fixture owner identities are required). `bridgeExecutable` names
+the built Mac apphost, and `cliWatchRuntimeDirectory` can name its build directory
+for the existing output exclusion. Config and snapshot must be under the explicit
+fixture root, with no symlink traversal. The collector checks file access again
+when following metadata pointers. No native Codex session/default home discovery,
+model calls, quota reads, plugin changes or background installs are performed.
+Mac's extra App-runtime overlay is disabled; all work axes still come from the
+existing collector/projector and public field allowlist. Unobserved process or
+activity data stays unknown, not a claim of generation/completion/acceptance.
+The foreground launcher opens no browser automatically. Ctrl-C stops only its
+own server/bridge. Windows launcher and runtime overlay are unchanged.
+
+Build and fixture-scene results are recorded separately after actual execution;
+source portability alone is not evidence that a live scene passed.

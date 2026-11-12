@@ -1695,7 +1695,7 @@ public sealed partial class MailboxCollector : ICollector
         }
 
         FileInfo info;
-        try { info = new FileInfo(normalized); }
+        try { info = new FileInfo(WatchReadBoundary.Check(normalized)); }
         catch (Exception ex)
         {
             NoteJobIssue(issues, normalized, "stat_failed", ex.GetType().Name + ": " + ex.Message, observedAt, jobKey, kind);
@@ -1731,7 +1731,7 @@ public sealed partial class MailboxCollector : ICollector
             {
                 // Stat is only an early rejection. Bound the read itself against growth/replace races.
                 _contentReads.Add(normalized);
-                await using var stream = new FileStream(normalized, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, true);
+                await using var stream = new FileStream(WatchReadBoundary.Check(normalized), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, true);
                 var bytes = new byte[maxBytes + 1];
                 var length = 0;
                 while (length < bytes.Length)
@@ -1841,7 +1841,7 @@ public sealed partial class MailboxCollector : ICollector
 
         try
         {
-            var info = new FileInfo(normalized);
+            var info = new FileInfo(WatchReadBoundary.Check(normalized));
             documents.Add(new RawDocument(
                 id, KindAdapterResultStat, normalized,
                 new JsonObject
@@ -1900,7 +1900,7 @@ public sealed partial class MailboxCollector : ICollector
             if (!seen.Add(id)) return;
             try
             {
-                var info = new FileInfo(path);
+                var info = new FileInfo(WatchReadBoundary.Check(path));
                 if (!info.Exists) return;
                 documents.Add(new RawDocument(
                     id, "outbox_file", path,
@@ -2186,7 +2186,7 @@ public sealed partial class MailboxCollector : ICollector
         if (!seen.Add(id) || !File.Exists(path)) return;
         try
         {
-            var info = new FileInfo(path);
+            var info = new FileInfo(WatchReadBoundary.Check(path));
             if (!info.Exists) return;
             documents.Add(new RawDocument(
                 id,
@@ -2224,7 +2224,7 @@ public sealed partial class MailboxCollector : ICollector
     {
         try
         {
-            var info = new DirectoryInfo(path);
+            var info = new DirectoryInfo(WatchReadBoundary.Check(path));
             return info.Exists && info.Attributes.HasFlag(FileAttributes.ReparsePoint);
         }
         catch (Exception)

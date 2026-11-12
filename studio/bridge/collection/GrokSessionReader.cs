@@ -201,7 +201,7 @@ internal static class GrokSessionReader
         if (!File.Exists(path)) return null;
         try
         {
-            var info = new FileInfo(path);
+            var info = new FileInfo(StudioReadBoundary.Check(path));
             if (info.Length > 1_048_576) return null;
             var text = PromptFileIdentity.ReadMetadata(path);
             if (string.IsNullOrWhiteSpace(text)) return null;
@@ -220,7 +220,7 @@ internal static class GrokSessionReader
         try
         {
             if (!File.Exists(path)) return;
-            var info = new FileInfo(path);
+            var info = new FileInfo(StudioReadBoundary.Check(path));
             dest[name + "_mtime"] = new DateTimeOffset(DateTime.SpecifyKind(info.LastWriteTimeUtc, DateTimeKind.Utc)).ToString("o");
             dest[name + "_bytes"] = info.Length;
         }
@@ -234,10 +234,10 @@ internal static class GrokSessionReader
         if (!File.Exists(path)) return null;
         try
         {
-            var info = new FileInfo(path);
+            var info = new FileInfo(StudioReadBoundary.Check(path));
             if (info.Length <= 0) return null;
             var take = (int)Math.Min(8192, info.Length);
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var stream = new FileStream(StudioReadBoundary.Check(path), FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             stream.Seek(Math.Max(0, info.Length - take), SeekOrigin.Begin);
             var buf = new byte[take];
             var n = stream.Read(buf, 0, take);

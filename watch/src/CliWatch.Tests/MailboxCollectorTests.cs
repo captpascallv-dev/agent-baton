@@ -591,7 +591,14 @@ public sealed class MailboxCollectorTests
         WriteRegistration(jobs, "a-old-name", oldId, stateRoot, null);
         WriteRegistration(jobs, "z-live", liveId, stateRoot, null);
         var names = Directory.EnumerateFiles(jobs, "*.json").Select(Path.GetFileName).ToList();
+#if MAC_PORT_TESTS
+        // Verify fixture completeness and naming only. Filesystem enumeration order
+        // is unspecified; this does not claim the live item is naturally returned last.
+        Assert.Equal(16, names.Count);
+        Assert.Equal("z-live--1.json", names.OrderBy(n => n, StringComparer.Ordinal).Last());
+#else
         Assert.Equal("z-live--1.json", names[^1]);
+#endif
         var prompt = Path.Combine(dir.Path, "old-name", "native", "jobs", liveId, "prompt.txt");
         Directory.CreateDirectory(Path.GetDirectoryName(prompt)!);
         File.WriteAllText(prompt, "fixture");
@@ -603,9 +610,26 @@ public sealed class MailboxCollectorTests
         var attempted = batch.Documents.First(d => d.Kind == "watch_config").Data["json_files_attempted"]!.GetValue<int>();
         Assert.Equal(budget, attempted);
         Assert.Equal(budget, reads.Count);
+#if MAC_PORT_TESTS
+        // The collector verifies a matching live registration immediately, then
+        // continues scanning registrations. Native enumeration need not put it last.
+        // Require the exact metadata subsequence, adjacency and registration order,
+        // not an incidental position at the end of all reads.
+        var liveOwner = Path.Combine(stateRoot, "jobs", liveId, "owner.json");
+        var liveRequest = Path.Combine(stateRoot, "jobs", liveId, "request.json");
+        var metadataReads = reads.Where(path => Path.GetFileName(path) is "owner.json" or "request.json").ToArray();
+        Assert.Equal(new[] { liveOwner, liveRequest }, metadataReads);
+        var readList = reads.ToList();
+        var registrationIndex = readList.IndexOf(Path.Combine(jobs, "z-live--1.json"));
+        var ownerIndex = readList.IndexOf(liveOwner);
+        Assert.True(registrationIndex >= 0);
+        Assert.True(ownerIndex > registrationIndex);
+        Assert.Equal(ownerIndex + 1, readList.IndexOf(liveRequest));
+#else
         Assert.EndsWith(Path.Combine(liveId, "owner.json"), reads[^2]);
         Assert.EndsWith(Path.Combine(liveId, "request.json"), reads[^1]);
         Assert.DoesNotContain(reads.Take(reads.Count - 2), path => path.EndsWith("owner.json", StringComparison.OrdinalIgnoreCase) || path.EndsWith("request.json", StringComparison.OrdinalIgnoreCase));
+#endif
         Assert.DoesNotContain(reads, path => path.Contains("a-hist-", StringComparison.OrdinalIgnoreCase) && path.EndsWith("owner.json", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(reads, path => path.Contains(oldId, StringComparison.OrdinalIgnoreCase));
         var bind = Assert.Single(batch.Documents, d => d.Kind == "process_bind" && ObservationIdentity.Text(d.Data, "job_key") == "z-live--1");
