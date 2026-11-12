@@ -71,6 +71,14 @@ public sealed class CodexExecutableDiscovery
             Environment.GetEnvironmentVariable("CODEX_DESKTOP_EXE"),
         };
 
+        if (OperatingSystem.IsMacOS())
+        {
+            // Installed desktop bundles; never launch or inspect credentials during discovery.
+            candidates.Add("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex");
+            candidates.Add("/Applications/ChatGPT.app/Contents/Resources/codex");
+            candidates.Add("/Applications/Codex.app/Contents/Resources/codex");
+        }
+
         if (!string.IsNullOrWhiteSpace(appData)) candidates.AddRange(NpmNativeCandidates(appData));
         candidates.Add(string.IsNullOrWhiteSpace(localAppData) ? null : Path.Combine(localAppData, "Programs", "Codex", "codex.exe"));
         candidates.Add(string.IsNullOrWhiteSpace(localAppData) ? null : Path.Combine(localAppData, "Programs", "Codex", "resources", "codex.exe"));

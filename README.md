@@ -48,7 +48,7 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 | --- | --- | --- |
 | [`studio/`](studio/) | **研究室**：把本机的 Claude、Codex、执行者画成一间房里的 AI 娘，谁在干活、谁睡着一眼看见；自带演示模式 | 浏览器（Node.js） |
 | [`watch/`](watch/) | **执行观察窗**：只读查看本机 CLI 进程、派单记录和交卷状态；未知如实显示，结束任务留在历史 | Windows x64（[成品下载](https://github.com/captpascallv-dev/agent-baton/releases/tag/watch-v0.1.0)） |
-| [`hud/`](hud/) | **额度 HUD**：桌面悬浮面板，显示各家订阅剩余额度和重置时间，并写出一份额度快照给 Lead 派活前读 | Windows 10/11 x64（[成品下载](https://github.com/captpascallv-dev/codex-usage-hud/releases/latest)） |
+| [`hud/`](hud/) | **额度 HUD**：桌面悬浮面板，显示各家订阅剩余额度和重置时间，并写出一份额度快照给 Lead 派活前读 | Windows 10/11 x64（[成品下载](https://github.com/captpascallv-dev/codex-usage-hud/releases/latest)）；macOS 菜单栏版见 [`hud/macos/`](hud/macos/) |
 
 **护栏和小工具**
 
@@ -118,20 +118,20 @@ agent-baton 的做法是：**派活和等待都交给本地程序**。守候只�
 | 组件 | macOS | 说明 |
 | --- | --- | --- |
 | `method/` 工作流方法 | 适用 | 纯文档 |
-| `claude/` 派活和叫醒、`mailbox/` Lead 之间的信箱 | Mac 离线实测通过 | PowerShell 7.7：claude 12项、mailbox 8项；假执行者完整交卷，真实模型派活尚未执行 |
+| `claude/` 派活和叫醒、`mailbox/` Lead 之间的信箱 | Mac 离线实测通过 | PowerShell 7.7：claude 12项、mailbox 8项；假执行者完整交卷；主号 gpt-6.1-sol / xhigh 真实派活 1 次交卷、waiter 退出 0；派活脚本在 Mac 上未与调用方脱开，修复中（见 `claude/README.md`） |
 | `acp/` ACP 客户端 | Mac 离线实测通过 | Intel macOS 15.7：mock smoke 退出 0；非真实模型调用 |
 | `tools/extract_dialogue.py` | 适用 | 纯 Python |
 | `onestead/` | Mac 离线分片实测通过 | 1312个收集节点均已覆盖；首跑限时后续跑尾片，路径fixture修复后模块7项重跑通过；网页打开本机应用/目录仍不可用 |
 | `codex/` Codex App 叫醒插件 | Mac 离线实测通过；真实唤醒未测 | 36/36；慢 Intel 的普通 mock 启动时限为2秒，专用超时测试不变；未改 App 设置 |
 | `studio/` 研究室 | Mac 离线测试通过；真实模式未测 | `test:live` 29/29，假执行者与本地 HTTP；不能据此宣称真实采集器可用 |
 | `watch/` 执行观察窗 | 需要重新做 | WPF，只支持 Windows |
-| `hud/` 额度 HUD | 需要重新做 | WPF / net8.0-windows，只支持 Windows |
-| `tools/quota_pace.py` | 需要额度快照 | 读 `hud/` 写出的快照；macOS 没有 HUD，可以按同样格式自己写一份 |
+| `hud/` 额度 HUD | Mac 版已做，Codex 主额度实测通过 | SwiftUI 菜单栏应用 + 与 Windows 共用数据层的命令行入口 `CodexUsageHud.Cli`；Intel Mac 用主号真实读取 1 次，与 Windows HUD 和 App 显示一致；其余槽位默认关闭，会话层级和 token 统计未移植；Windows/WPF 测试套只在 Windows 跑 |
+| `tools/quota_pace.py` | Mac 实测通过 | 默认读 `~/Library/Application Support/CodexUsageHUD/quota-snapshot.json`（Mac 版 HUD 命令行入口写出） |
 | `guards/` 内存护栏和删除护栏 | Mac 基础实测通过，边界见文档 | RSS 采样与进程组清理，不是硬上限；原生废纸篓；Finder alias 保守拒绝，跨卷和超大目标未测 |
 
-一句话：在 macOS 上，“写卡 → 派活 → 等交卷 → 被叫醒 → Lead 之间写信 → 记进 Onestead”主线的离线 mock 已在 Intel Mac 实测；真实模型派活和 App 唤醒尚未验证；三个“看得见”的窗口里只有研究室演示模式能开，两道护栏已有 Mac 分支，采样上限和文件回收的限制见各自文档。
+一句话：在 macOS 上，“写卡 → 派活 → 等交卷 → 被叫醒 → Lead 之间写信 → 记进 Onestead”主线的离线 mock 已在 Intel Mac 实测；真实模型派活已交卷 1 次，App 唤醒尚未验证；三个“看得见”的窗口里，额度 HUD 有了 Mac 菜单栏版，研究室能开演示模式，执行观察窗还只有 Windows 版；两道护栏已有 Mac 分支，采样上限和文件回收的限制见各自文档。
 
-> **macOS in one line:** offline mock dispatch/wake, mailbox, ACP and plugin checks pass on Intel Mac with PowerShell 7; real model dispatch and App wake remain untested; the studio demo runs anywhere Node runs; the studio live mode, the execution window and quota HUD remain Windows-only. The guards have Mac branches: sampled RSS is not a hard cap, and native trash fails closed. See component reports for tested versus untested scope.
+> **macOS in one line:** offline mock dispatch/wake, mailbox, ACP and plugin checks pass on Intel Mac with PowerShell 7; one real model dispatch delivered, App wake remains untested; the quota HUD has a macOS menu-bar version; the studio demo runs anywhere Node runs; the studio live mode and the execution window remain Windows-only. The guards have Mac branches: sampled RSS is not a hard cap, and native trash fails closed. See component reports for tested versus untested scope.
 
 ---
 
