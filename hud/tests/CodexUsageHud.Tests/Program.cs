@@ -13,7 +13,7 @@ using System.Windows.Threading;
 
 namespace CodexUsageHud.Tests;
 
-internal static class Program
+internal static partial class Program
 {
     private const string Sentinel = "PRIVACY_SENTINEL_7F2A9C4E1D8B6A30";
 
@@ -80,6 +80,7 @@ internal static class Program
         var runRoot = NewRunRoot("test-run");
         var tests = new (string Name, Action Run)[]
         {
+            ("runner_restores_synchronization_context", RunnerRestoresSynchronizationContext),
             ("token_math_and_overflow", TokenMathAndOverflow),
             ("database_saturating_aggregates_before_after_restart", () => DatabaseSaturatingAggregates(runRoot)),
             ("fixture_a_cumulative_equality", () => FixtureACumulativeEquality(runRoot)),
@@ -242,7 +243,7 @@ internal static class Program
         {
             try
             {
-                test.Run();
+                RunTest(test.Run);
                 Console.WriteLine($"PASS {test.Name}");
             }
             catch (Exception exception)
@@ -2942,7 +2943,8 @@ internal static class Program
         File.SetLastWriteTimeUtc(target, DateTime.UtcNow.AddDays(-10));
 
         var dbPath = Path.Combine(directory, "usage.db");
-        using var engine = new UsageEngine(home, dbPath);
+        using var engine = new UsageEngine(home, dbPath,
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
         engine.Cadence.MarkQuotaAttempt(DateTimeOffset.UtcNow);
         engine.RefreshAsync().GetAwaiter().GetResult();
         Assert.Equal(0L, engine.Database.GetSampleCount(targetThread));
@@ -3433,7 +3435,8 @@ internal static class Program
                 Array.Empty<QuotaBucket>(), QuotaSource.OfficialAppServer, DateTimeOffset.UtcNow.AddHours(-1), false);
             database.SaveQuota(expired);
         }
-        using var engine = new UsageEngine(home, databasePath);
+        using var engine = new UsageEngine(home, databasePath,
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
         var snapshot = engine.GetSnapshot();
         Assert.True(snapshot.Quota.Primary is null);
         Assert.True(!snapshot.Quota.IsStale);
@@ -3782,7 +3785,7 @@ internal static class Program
             if (request.Url.AbsolutePath.Contains("usage-summary", StringComparison.Ordinal))
             {
                 Interlocked.Increment(ref summaryCalls);
-                return Task.FromResult(new AllowlistedHttpResponse(200, MonthlyZeros, request.Url));
+                return Task.FromResult(new AllowlistedHttpResponse(200, MonthlyZeros(end), request.Url));
             }
 
             if (request.Url.AbsolutePath.Contains("billing", StringComparison.Ordinal))
@@ -3792,7 +3795,8 @@ internal static class Program
 
             return Task.FromResult(new AllowlistedHttpResponse(200, "{}", request.Url));
         });
-        var coordinator = new ProviderQuotaCoordinator(http: http, cursorTokens: cursorTokens,
+        var coordinator = OfflineCoordinator(http: http,
+            cursorTokens: cursorTokens,
             grokTokens: new InjectedTokenSource(SyntheticJwt("auth0|grok-user")));
         var settings = SharedPoolSettings(SecretLabel, cursor: true, bot: true, grok: true);
         var board = await coordinator.RefreshAsync(settings, PrimaryObservation(DateTimeOffset.UtcNow),
@@ -3906,18 +3910,19 @@ internal static class Program
             expectSummary: false, expectBotLegacy: false).ConfigureAwait(false);
 
         var botOffSummary = 0;
-        var botOff = new ProviderQuotaCoordinator(http: new ScriptedHttpSender((request, _) =>
+        var botOff = OfflineCoordinator(http: new ScriptedHttpSender((request, _) =>
         {
             if (request.Url.AbsolutePath.Contains("get-sand-usage-status", StringComparison.Ordinal))
                 return Task.FromResult(new AllowlistedHttpResponse(200, unifiedBody, request.Url));
             if (request.Url.AbsolutePath.Contains("usage-summary", StringComparison.Ordinal))
             {
                 Interlocked.Increment(ref botOffSummary);
-                return Task.FromResult(new AllowlistedHttpResponse(200, MonthlyZeros, request.Url));
+                return Task.FromResult(new AllowlistedHttpResponse(200, MonthlyZeros(end), request.Url));
             }
 
             return Task.FromResult(new AllowlistedHttpResponse(404, "{}", request.Url));
-        }), cursorTokens: new InjectedTokenSource(SyntheticJwt("auth0|unified-user")));
+        }),
+            cursorTokens: new InjectedTokenSource(SyntheticJwt("auth0|unified-user")));
         var botOffBoard = await botOff.RefreshAsync(SharedPoolSettings(SecretLabel, true, false, false),
             PrimaryObservation(DateTimeOffset.UtcNow), CancellationToken.None, true).ConfigureAwait(false);
         Assert.Equal(0, botOffSummary);
@@ -3958,7 +3963,7 @@ internal static class Program
             bool expectBotLegacy)
         {
             var calls = 0;
-            var fresh = new ProviderQuotaCoordinator(http: new ScriptedHttpSender((request, _) =>
+            var fresh = OfflineCoordinator(http: new ScriptedHttpSender((request, _) =>
             {
                 if (request.Url.AbsolutePath.Contains("get-sand-usage-status", StringComparison.Ordinal))
                 {
@@ -3969,14 +3974,15 @@ internal static class Program
                 if (request.Url.AbsolutePath.Contains("usage-summary", StringComparison.Ordinal))
                 {
                     Interlocked.Increment(ref calls);
-                    return Task.FromResult(new AllowlistedHttpResponse(200, MonthlyZeros, request.Url));
+                    return Task.FromResult(new AllowlistedHttpResponse(200, MonthlyZeros(end), request.Url));
                 }
 
                 if (request.Url.AbsolutePath.Contains("billing", StringComparison.Ordinal))
                     return Task.FromResult(new AllowlistedHttpResponse(200, GrokBody(start, end), request.Url));
                 return Task.FromResult(new AllowlistedHttpResponse(200, "{}", request.Url));
-            }), cursorTokens: new InjectedTokenSource(SyntheticJwt("auth0|case-" + name)),
-                grokTokens: new InjectedTokenSource(SyntheticJwt("auth0|grok-user")));
+            }),
+            cursorTokens: new InjectedTokenSource(SyntheticJwt("auth0|case-" + name)),
+            grokTokens: new InjectedTokenSource(SyntheticJwt("auth0|grok-user")));
             var result = await fresh.RefreshAsync(SharedPoolSettings(SecretLabel, true, true, true),
                 PrimaryObservation(DateTimeOffset.UtcNow), CancellationToken.None, true).ConfigureAwait(false);
             var cursorSlot = result.Find(ProviderSlotIds.Cursor)!;
@@ -4014,8 +4020,8 @@ internal static class Program
         }
     }
 
-    private const string MonthlyZeros =
-        """{"billingCycleEnd":"2026-11-01T00:00:00Z","individualUsage":{"plan":{"enabled":true,"used":0,"autoPercentUsed":0,"apiPercentUsed":0,"totalPercentUsed":0}}}""";
+    private static string MonthlyZeros(DateTimeOffset reset) =>
+        """{"billingCycleEnd":"RESET","individualUsage":{"plan":{"enabled":true,"used":0,"autoPercentUsed":0,"apiPercentUsed":0,"totalPercentUsed":0}}}""".Replace("RESET", reset.ToString("O", CultureInfo.InvariantCulture), StringComparison.Ordinal);
 
     private static string SandBody(bool? unified, string? usedLiteral, DateTimeOffset start, DateTimeOffset end,
         bool? included)
@@ -4099,7 +4105,8 @@ internal static class Program
         var directory = Path.Combine(runRoot, "unified-render");
         Directory.CreateDirectory(Path.Combine(directory, "codex-home", "sessions"));
         using var engine = new UsageEngine(Path.Combine(directory, "codex-home"), Path.Combine(directory, "usage.db"),
-            Path.Combine(directory, "hud.log"));
+            Path.Combine(directory, "hud.log"),
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
         var offLeft = System.Windows.SystemParameters.VirtualScreenLeft - 4000;
         var offTop = System.Windows.SystemParameters.VirtualScreenTop - 1600;
         using var window = new MainWindow(engine, () => Task.CompletedTask, false);
@@ -4308,7 +4315,7 @@ internal static class Program
         Assert.True(CursorSessionCookie.TryBuild(token, out _, out var identity));
         Assert.Equal(OpaqueIdentity.Hash("cursor|user-one"), identity);
         Assert.Equal("secret-token", GrokAuthTokenParser.Extract("""{"access_token":"secret-token","email":"x@y.z"}"""));
-        var missingCursor = WindowsLoginPresence.Cursor(Path.Combine(Path.GetTempPath(), "cuh-no-cursor-" + Guid.NewGuid().ToString("N")));
+        var missingCursor = WindowsLoginPresence.Cursor(Path.Combine(TestTempRoot(), "cuh-no-cursor-" + Guid.NewGuid().ToString("N")));
         Assert.True(!missingCursor.Present);
         Assert.True(missingCursor.RelativeHint.Contains("%APPDATA%", StringComparison.Ordinal));
     }
@@ -4345,7 +4352,8 @@ internal static class Program
                     request.Url));
             return Task.FromResult(new AllowlistedHttpResponse(404, "{}", request.Url));
         });
-        var coordinator = new ProviderQuotaCoordinator(http: http, cursorTokens: new InjectedTokenSource(token),
+        var coordinator = OfflineCoordinator(http: http,
+            cursorTokens: new InjectedTokenSource(token),
             grokTokens: new InjectedTokenSource("grok-token"));
         var settings = new ProviderAccessSettings(new[]
         {
@@ -4367,7 +4375,7 @@ internal static class Program
         var directory = Path.Combine(runRoot, "provider-fail-ui");
         Directory.CreateDirectory(Path.Combine(directory, "codex-home", "sessions"));
         using var engine = new UsageEngine(Path.Combine(directory, "codex-home"), Path.Combine(directory, "usage.db"),
-            Path.Combine(directory, "hud.log"), providers: coordinator);
+            Path.Combine(directory, "hud.log"), providers: coordinator, findCodexExecutable: () => null);
         var snapshot = engine.GetSnapshot() with { Quota = primary, Providers = board };
         var viewModel = new MainViewModel();
         viewModel.Apply(snapshot);
@@ -4379,7 +4387,7 @@ internal static class Program
 
     private static void CodexHomeChildEnvironmentIsolation()
     {
-        var home = Path.Combine(Path.GetTempPath(), "codex-home-isolated-test");
+        var home = Path.Combine(TestTempRoot(), "codex-home-isolated-test");
         var info = AppServerProtocol.CreateStartInfo("codex", new Dictionary<string, string> { ["CODEX_HOME"] = home });
         Assert.Equal(home, info.Environment["CODEX_HOME"]);
         Assert.True(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CODEX_HOME")) ||
@@ -4609,7 +4617,7 @@ internal static class Program
     private static async Task IdentityMissingInvalidatesPriorBinding()
     {
         var now = DateTimeOffset.UtcNow;
-        var coordinator = new ProviderQuotaCoordinator();
+        var coordinator = OfflineCoordinator();
         var settings = FiveSlotSettings();
         var first = await coordinator.RefreshAsync(settings, PrimaryObservation(now), CancellationToken.None, true,
             "hash-a");
@@ -4633,7 +4641,7 @@ internal static class Program
                     ? "Codex B"
                     : "Codex A",
                 now)));
-        var coordinator = new ProviderQuotaCoordinator(codex: profile);
+        var coordinator = OfflineCoordinator(codex: profile);
         var settingsA = FiveSlotSettings(true, homes.HomeA);
         var boardA = await coordinator.RefreshAsync(settingsA, PrimaryObservation(now), CancellationToken.None, true,
             null, homes.Primary);
@@ -4662,7 +4670,8 @@ internal static class Program
             return Task.FromResult(new AllowlistedHttpResponse(200,
                 """{"autoPercentUsed":12.5,"apiPercentUsed":4}""", request.Url));
         });
-        var coordinator = new ProviderQuotaCoordinator(http: http, cursorTokens: new InjectedTokenSource(token));
+        var coordinator = OfflineCoordinator(http: http,
+            cursorTokens: new InjectedTokenSource(token));
         var enabled = FiveSlotSettings(cursorEnabled: true);
         var live = await coordinator.RefreshAsync(enabled, PrimaryObservation(now), CancellationToken.None, true);
         Assert.Equal(QuotaSlotStatus.Live, live.Find(ProviderSlotIds.Cursor)!.Status);
@@ -4676,7 +4685,7 @@ internal static class Program
 
     private static async Task ProviderCurrentBoardAgesLive()
     {
-        var coordinator = new ProviderQuotaCoordinator();
+        var coordinator = OfflineCoordinator();
         var settings = FiveSlotSettings();
         var observed = DateTimeOffset.UtcNow;
         var board = await coordinator.RefreshAsync(settings,
@@ -4693,11 +4702,13 @@ internal static class Program
     {
         var now = DateTimeOffset.UtcNow;
         var token = SyntheticJwt("auth0|user-one");
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var http = new ScriptedHttpSender(async (request, cancellationToken) =>
         {
             if (request.Url.AbsolutePath.Contains("usage-summary", StringComparison.Ordinal))
             {
-                await Task.Delay(1500, cancellationToken).ConfigureAwait(false);
+                await release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
                 return new AllowlistedHttpResponse(200, """{"autoPercentUsed":12.5,"apiPercentUsed":4}""",
                     request.Url);
             }
@@ -4718,17 +4729,29 @@ internal static class Program
 
             return new AllowlistedHttpResponse(404, "{}", request.Url);
         });
-        var coordinator = new ProviderQuotaCoordinator(http: http, cursorTokens: new InjectedTokenSource(token),
-            grokTokens: new InjectedTokenSource(SyntheticJwt("auth0|grok-user")))
+        var coordinator = OfflineCoordinator(http: http,
+            cursorTokens: new InjectedTokenSource(token),
+            grokTokens: new InjectedTokenSource(SyntheticJwt("auth0|grok-user")),
+            publishBudget: TimeSpan.FromMilliseconds(250));
+        coordinator.SlotPublished += slot =>
         {
-            PublishBudget = TimeSpan.FromMilliseconds(250),
+            if (slot.SlotId == ProviderSlotIds.Cursor && slot.Status == QuotaSlotStatus.Live)
+                published.TrySetResult();
         };
         var settings = FiveSlotSettings(cursorEnabled: true, grokEnabled: true, grokBotEnabled: true);
-        var board = await coordinator.RefreshAsync(settings, PrimaryObservation(now), CancellationToken.None, true);
-        Assert.Equal(QuotaSlotStatus.Live, board.PrimaryCodex!.Status);
-        Assert.Equal(QuotaSlotStatus.Live, board.Find(ProviderSlotIds.Grok)!.Status);
-        Assert.True(board.Find(ProviderSlotIds.Cursor)!.Status != QuotaSlotStatus.Live);
-        await Task.Delay(1800).ConfigureAwait(false);
+        try
+        {
+            var board = await coordinator.RefreshAsync(settings, PrimaryObservation(now), CancellationToken.None, true)
+                .ConfigureAwait(false);
+            Assert.Equal(QuotaSlotStatus.Live, board.PrimaryCodex!.Status);
+            Assert.Equal(QuotaSlotStatus.Live, board.Find(ProviderSlotIds.Grok)!.Status);
+            Assert.True(board.Find(ProviderSlotIds.Cursor)!.Status != QuotaSlotStatus.Live);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+        await published.Task.ConfigureAwait(false);
         var later = coordinator.CurrentBoard(DateTimeOffset.UtcNow, settings);
         Assert.Equal(QuotaSlotStatus.Live, later.Find(ProviderSlotIds.Cursor)!.Status);
     }
@@ -4744,10 +4767,8 @@ internal static class Program
                 return await hold.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
             return ScriptedCodexSnapshot(settings, 90, "Codex B", now);
         });
-        var coordinator = new ProviderQuotaCoordinator(codex: profile)
-        {
-            PublishBudget = TimeSpan.FromMilliseconds(200),
-        };
+        var coordinator = OfflineCoordinator(codex: profile,
+            publishBudget: TimeSpan.FromMilliseconds(200));
         var settingsA = FiveSlotSettings(true, homes.HomeA);
         var settingsB = FiveSlotSettings(true, homes.HomeB);
         var refreshA = coordinator.RefreshAsync(settingsA, PrimaryObservation(now), CancellationToken.None, true,
@@ -4812,7 +4833,7 @@ internal static class Program
             if (request.Url.AbsolutePath.Contains("billing", StringComparison.Ordinal))
             {
                 return Task.FromResult(new AllowlistedHttpResponse(200,
-                    """{"usagePercent":11,"currentPeriod":{"start":"2026-09-14T00:00:00Z","end":"2026-09-28T00:00:00Z"}}""",
+                    CurrentGrokBillingBody(11),
                     request.Url));
             }
 
@@ -4892,10 +4913,9 @@ internal static class Program
             await Task.Delay(700, cancellationToken).ConfigureAwait(false);
             return new AllowlistedHttpResponse(200, """{"autoPercentUsed":80,"apiPercentUsed":10}""", request.Url);
         });
-        var coordinator = new ProviderQuotaCoordinator(http: http, cursorTokens: new InjectedTokenSource(token))
-        {
-            PublishBudget = TimeSpan.FromMilliseconds(200),
-        };
+        var coordinator = OfflineCoordinator(http: http,
+            cursorTokens: new InjectedTokenSource(token),
+            publishBudget: TimeSpan.FromMilliseconds(200));
         var settings = FiveSlotSettings(cursorEnabled: true);
         var seeded = await coordinator.RefreshAsync(settings, PrimaryObservation(now), CancellationToken.None, true)
             .ConfigureAwait(false);
@@ -4943,17 +4963,15 @@ internal static class Program
                 return new AllowlistedHttpResponse(200, """{"isUnified":false}""", request.Url);
             return new AllowlistedHttpResponse(404, "{}", request.Url);
         });
-        var coordinator = new ProviderQuotaCoordinator(
-            codex: new ScriptedCodexProfile((settings, _, _) =>
+        var coordinator = OfflineCoordinator(codex: new ScriptedCodexProfile((settings, _, _) =>
                 Task.FromResult(ScriptedCodexSnapshot(settings, 20, "Codex", DateTimeOffset.UtcNow))),
-            http: http, cursorTokens: new InjectedTokenSource(token))
-        {
-            PublishBudget = TimeSpan.FromMilliseconds(200),
-        };
+            http: http,
+            cursorTokens: new InjectedTokenSource(token),
+            publishBudget: TimeSpan.FromMilliseconds(200));
         var directory = Path.Combine(runRoot, "engine-late-slot");
         Directory.CreateDirectory(Path.Combine(directory, "codex-home", "sessions"));
         using var engine = new UsageEngine(Path.Combine(directory, "codex-home"), Path.Combine(directory, "usage.db"),
-            Path.Combine(directory, "hud.log"), providers: coordinator);
+            Path.Combine(directory, "hud.log"), providers: coordinator, findCodexExecutable: () => null);
         await engine.SaveSettingsAsync(ProviderSettingKeys.ToStored(FiveSlotSettings(cursorEnabled: true)))
             .ConfigureAwait(false);
         await engine.RefreshProviderBoardAsync(true, CancellationToken.None).ConfigureAwait(false);
@@ -5246,7 +5264,7 @@ internal static class Program
         Assert.Equal(QuotaSlotStatus.Unavailable, expired.Status);
         Assert.Equal("pi_codex_renewal_unavailable", expired.ErrorCode);
 
-        var coordinator = new ProviderQuotaCoordinator(piCodex: new ScriptedPiCodexAdapter((_, _) =>
+        var coordinator = OfflineCoordinator(piCodex: new ScriptedPiCodexAdapter((_, _) =>
             Task.FromResult(live)));
         var settings = FiveSlotSettings(true);
         var board = await coordinator.RefreshAsync(settings, PrimaryObservation(now), CancellationToken.None, true,
@@ -5361,7 +5379,8 @@ internal static class Program
         var http = new ScriptedHttpSender((request, _) =>
             Task.FromResult(new AllowlistedHttpResponse(200, PiUsageFixture, request.Url)));
         var adapter = new PiCodexQuotaAdapter(http, tokens, renewer);
-        var coordinator = new ProviderQuotaCoordinator(piCodex: adapter, piTokens: tokens);
+        var coordinator = OfflineCoordinator(piCodex: adapter,
+            piTokens: tokens);
         var settings = new ProviderAccessSettings(new[] { PiSlot }, CompactLayoutModes.Rail, true);
         var board = await coordinator.RefreshAsync(settings, null, CancellationToken.None, manual: true);
         Assert.Equal(QuotaSlotStatus.Live, board.Find(ProviderSlotIds.CodexSecondary)!.Status);
@@ -5495,7 +5514,7 @@ internal static class Program
 
     private static void IsolatedPreviewRequiresDataAndHome()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "cuh-preview-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(TestTempRoot(), "cuh-preview-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try
         {
@@ -5549,7 +5568,7 @@ internal static class Program
         var unknown = GrokAuthTokenParser.Inspect("""{"hello":"world"}""");
         Assert.Equal("unsupported", unknown.FormatKind);
         Assert.True(!unknown.Usable);
-        var tempAuth = Path.Combine(Path.GetTempPath(), "cuh-grok-bin-" + Guid.NewGuid().ToString("N"), "auth.json");
+        var tempAuth = Path.Combine(TestTempRoot(), "cuh-grok-bin-" + Guid.NewGuid().ToString("N"), "auth.json");
         Assert.True(GrokCliModelsRenewer.ResolveExecutable(tempAuth) is null);
         Assert.Equal(TimeSpan.FromSeconds(35), ProviderQuotaCoordinator.SlotReadTimeout(ProviderSlotIds.Grok));
         Assert.Equal(TimeSpan.FromSeconds(8), ProviderQuotaCoordinator.SlotReadTimeout(ProviderSlotIds.Cursor));
@@ -5559,7 +5578,7 @@ internal static class Program
     {
         var http = new ScriptedHttpSender((_, _) => Task.FromResult(new AllowlistedHttpResponse(200, "{}",
             ProviderHttpAllowlist.GrokBilling)));
-        var directory = Path.Combine(Path.GetTempPath(), "cuh-grok-shape-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(TestTempRoot(), "cuh-grok-shape-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, "auth.json");
         File.WriteAllText(path, """{"unrecognized":true}""");
@@ -5574,7 +5593,7 @@ internal static class Program
 
     private static async Task GrokExpiredRenewsThenQuota()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "cuh-grok-renew-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(TestTempRoot(), "cuh-grok-renew-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, "auth.json");
         File.WriteAllText(path, SyntheticGrokIssuer("old-key", DateTimeOffset.UtcNow.AddHours(-2), null));
@@ -5605,7 +5624,7 @@ internal static class Program
 
     private static async Task GrokRenewalRereadsChangedCredential()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "cuh-grok-reread-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(TestTempRoot(), "cuh-grok-reread-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, "auth.json");
         File.WriteAllText(path, SyntheticGrokIssuer("old-key", DateTimeOffset.UtcNow.AddHours(-1), "grant-fixture"));
@@ -5631,7 +5650,7 @@ internal static class Program
 
     private static async Task GrokRenewalSingleFlight()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "cuh-grok-flight-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(TestTempRoot(), "cuh-grok-flight-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, "auth.json");
         File.WriteAllText(path, SyntheticGrokIssuer("old-key", DateTimeOffset.UtcNow.AddHours(-1), "grant-fixture"));
@@ -5656,7 +5675,7 @@ internal static class Program
 
     private static async Task GrokRenewalTimeoutAndFailure()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "cuh-grok-fail-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(TestTempRoot(), "cuh-grok-fail-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, "auth.json");
         File.WriteAllText(path, SyntheticGrokIssuer("old-key", DateTimeOffset.UtcNow.AddHours(-1), "grant-fixture"));
@@ -5689,7 +5708,7 @@ internal static class Program
 
     private static async Task GrokRenewalRevokedDistinct()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "cuh-grok-revoked-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(TestTempRoot(), "cuh-grok-revoked-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, "auth.json");
         File.WriteAllText(path, SyntheticGrokIssuer("old-key", DateTimeOffset.UtcNow.AddHours(-1), "grant-fixture"));
@@ -5711,7 +5730,7 @@ internal static class Program
 
     private static async Task Grok401RetriesAfterRefresh()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "cuh-grok-401-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(TestTempRoot(), "cuh-grok-401-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, "auth.json");
         File.WriteAllText(path, SyntheticGrokIssuer("old-key", DateTimeOffset.UtcNow.AddHours(2), "grant-fixture"));
@@ -5773,10 +5792,9 @@ internal static class Program
                        "\",\"end\":\"" + end + "\"}}";
             return Task.FromResult(new AllowlistedHttpResponse(200, body, request.Url));
         });
-        var coordinator = new ProviderQuotaCoordinator(http: http, grokTokens: new InjectedTokenSource("grok-token"))
-        {
-            GrokLoginStampOverride = () => "login-stable",
-        };
+        var coordinator = OfflineCoordinator(http: http,
+            grokTokens: new InjectedTokenSource("grok-token"),
+            grokLoginStamp: () => "login-stable");
         var settings = FiveSlotSettings(grokEnabled: true);
         var elapsed = await coordinator.RefreshAsync(settings, PrimaryObservation(now), CancellationToken.None, true);
         var elapsedSlot = elapsed.Find(ProviderSlotIds.Grok)!;
@@ -5823,19 +5841,21 @@ internal static class Program
 
     private static AllowlistedHttpResponse GrokBillingOk(AllowlistedHttpRequest request) =>
         new(200,
-            """{"usagePercent":11,"currentPeriod":{"start":"2026-09-14T00:00:00Z","end":"2026-09-28T00:00:00Z"}}""",
+            CurrentGrokBillingBody(11),
             request.Url);
 
     private static void ProviderLiveDiagnosticSanitized()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(70));
-        var result = ProviderLiveDiagnostic.RunAsync(timeout.Token).GetAwaiter().GetResult();
-        Assert.Equal(7, result.Slots.Count);
+        var reports = ProviderSlotIds.All.Select(slotId => new ProviderLiveDiagnostic.LiveSlotReport(
+            slotId, QuotaSlotStatus.Live.ToString(), 1, "weekly", 60, true, 3,
+            true, false, null, null)).ToArray();
+        var output = ProviderLiveDiagnostic.Format(reports, IdentityColumnPresence.Missing, false);
+        Assert.Equal(7, reports.Length);
         foreach (var slotId in ProviderSlotIds.All)
-            Assert.True(result.Slots.Any(slot => slot.SlotId == slotId));
-        Assert.Equal(0, ProviderLiveDiagnostic.SecretHits(result.Output).Count);
-        Assert.True(result.Output.Contains("settings_untouched=1", StringComparison.Ordinal));
-        Assert.True(!result.Output.Contains("eyJ", StringComparison.Ordinal));
+            Assert.True(output.Contains("slot=" + slotId + " status=Live windows=1", StringComparison.Ordinal));
+        Assert.Equal(0, ProviderLiveDiagnostic.SecretHits(output).Count);
+        Assert.True(output.Contains("settings_untouched=1", StringComparison.Ordinal));
+        Assert.True(!output.Contains("eyJ", StringComparison.Ordinal));
     }
 
     private sealed class ScriptedGrokRenewer : IGrokSessionRenewer
@@ -5940,11 +5960,10 @@ internal static class Program
                 OpaqueIdentityHash = "pi-account",
             });
         });
-        var coordinator = new ProviderQuotaCoordinator(codex: profile, piCodex: pi,
-            piTokens: new InjectedPiCodexTokenSource(null, "pi-fp"))
-        {
-            CodexCliAuthStampOverride = _ => stamp,
-        };
+        var coordinator = OfflineCoordinator(codex: profile,
+            piCodex: pi,
+            piTokens: new InjectedPiCodexTokenSource(null, "pi-fp"),
+            codexCliAuthStamp: _ => stamp);
 
         var blank = SixSlotSettings(true, null);
         Assert.True(coordinator.ConfigurationKey(blank.Slot(ProviderSlotIds.CodexSecondary)).Contains("pi-fp",
@@ -6090,14 +6109,15 @@ internal static class Program
 
         var database = Path.Combine(root, "usage.db");
         var log = Path.Combine(root, "hud.log");
-        using (var engine = new UsageEngine(primary, database, log, providers: coordinator))
+        using (var engine = new UsageEngine(primary, database, log, providers: coordinator, findCodexExecutable: () => null))
         {
             await engine.SaveSettingsAsync(ProviderSettingKeys.ToStored(SixSlotSettings(true, cli)))
                 .ConfigureAwait(false);
             Assert.Equal(Path.GetFullPath(primary), engine.BoundCodexHome);
         }
 
-        using var restarted = new UsageEngine(primary, database, log);
+        using var restarted = new UsageEngine(primary, database, log,
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
         var keys = ProviderSettingKeys.ToStored(ProviderAccessSettings.Default()).Keys.ToArray();
         var loaded = ProviderSettingKeys.FromStored(await restarted.LoadSettingsAsync(keys).ConfigureAwait(false));
         Assert.Equal(normalized, loaded.Slot(ProviderSlotIds.CodexSecondary).CodexHome);
@@ -6127,7 +6147,8 @@ internal static class Program
         Directory.CreateDirectory(Path.Combine(codexHome, "sessions"));
         EnsureWpfTestApplication();
         using var engine = new UsageEngine(codexHome, Path.Combine(dataDirectory, "usage.db"),
-            Path.Combine(dataDirectory, "hud.log"));
+            Path.Combine(dataDirectory, "hud.log"),
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
         using var window = new MainWindow(engine, () => Task.CompletedTask, false);
         window.ShowActivated = false;
         window.ShowInTaskbar = false;
@@ -6320,7 +6341,8 @@ internal static class Program
         var directory = Path.Combine(runRoot, "hud-rail-rapid");
         Directory.CreateDirectory(Path.Combine(directory, "codex-home", "sessions"));
         using var engine = new UsageEngine(Path.Combine(directory, "codex-home"), Path.Combine(directory, "usage.db"),
-            Path.Combine(directory, "hud.log"));
+            Path.Combine(directory, "hud.log"),
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
         using var window = new MainWindow(engine, () => Task.CompletedTask, false);
         window.ShowActivated = false;
         window.ShowInTaskbar = false;
@@ -6416,7 +6438,8 @@ internal static class Program
         var directory = Path.Combine(runRoot, "hud-rail-layout");
         Directory.CreateDirectory(Path.Combine(directory, "codex-home", "sessions"));
         using var engine = new UsageEngine(Path.Combine(directory, "codex-home"), Path.Combine(directory, "usage.db"),
-            Path.Combine(directory, "hud.log"));
+            Path.Combine(directory, "hud.log"),
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
         using var window = new MainWindow(engine, () => Task.CompletedTask, false);
         window.ShowActivated = false;
         window.ShowInTaskbar = false;
@@ -6491,7 +6514,8 @@ internal static class Program
         var directory = Path.Combine(runRoot, "hud-topbar-640");
         Directory.CreateDirectory(Path.Combine(directory, "codex-home", "sessions"));
         using var engine = new UsageEngine(Path.Combine(directory, "codex-home"), Path.Combine(directory, "usage.db"),
-            Path.Combine(directory, "hud.log"));
+            Path.Combine(directory, "hud.log"),
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
         using var window = new MainWindow(engine, () => Task.CompletedTask, false);
         window.ShowActivated = false;
         window.ShowInTaskbar = false;
@@ -6631,7 +6655,8 @@ internal static class Program
         var codexHome = Path.Combine(directory, "codex-home");
         Directory.CreateDirectory(Path.Combine(codexHome, "sessions"));
         using var engine = new UsageEngine(codexHome, Path.Combine(directory, "usage.db"),
-            Path.Combine(directory, "hud.log"));
+            Path.Combine(directory, "hud.log"),
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
         try
         {
             using var window = new MainWindow(engine, () => Task.CompletedTask, false);
@@ -6736,13 +6761,20 @@ internal static class Program
         var codexHome = Path.Combine(directory, "codex-home");
         Directory.CreateDirectory(Path.Combine(codexHome, "sessions"));
         using var engine = new UsageEngine(codexHome, Path.Combine(directory, "usage.db"),
-            Path.Combine(directory, "hud.log"));
+            Path.Combine(directory, "hud.log"),
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
+        engine.SaveSettingsAsync(new Dictionary<string, string>
+        {
+            [ProviderSettingKeys.CompactLayout] = CompactLayoutModes.Card,
+        }).GetAwaiter().GetResult();
         using var window = new MainWindow(engine, () => Task.CompletedTask, false);
         window.ShowActivated = false;
         window.ShowInTaskbar = false;
         window.Left = System.Windows.SystemParameters.VirtualScreenLeft - 4000;
         window.Top = System.Windows.SystemParameters.VirtualScreenTop - 4000;
+        window.OverrideWorkAreaForTests(new System.Windows.Rect(0, 0, 1920, 1080));
         window.Show();
+        RestoreTestWindow(window);
         InvokeWindowMethod(window, "EnsureVisibleOnCurrentScreens");
         Assert.True(window.Left >= System.Windows.SystemParameters.VirtualScreenLeft - 312);
         Assert.True(window.Top >= System.Windows.SystemParameters.VirtualScreenTop - 282);
@@ -6768,8 +6800,8 @@ internal static class Program
 
         Assert.True(!window.Topmost);
         Assert.True(!window.ShowInTaskbar);
-        Assert.Near(156d, window.Width, 0.5d);
-        Assert.Near(508d, window.Height, 0.5d);
+        Assert.Near(224d, window.Width, 0.5d);
+        Assert.Near(324d, window.Height, 0.5d);
 
         InvokeWindowMethod(window, "OnToggleTopmost", window, new System.Windows.RoutedEventArgs());
         Assert.True(window.Topmost);
@@ -6866,7 +6898,7 @@ internal static class Program
         Assert.True(viewModel.IsExpanded);
         Assert.Near(1180d, window.Width, 0.5d);
         InvokeWindowMethod(window, "OnToggleExpand", window, new System.Windows.RoutedEventArgs());
-        Assert.Near(156d, window.Width, 0.5d);
+        Assert.Near(224d, window.Width, 0.5d);
         InvokeWindowMethod(window, "OnToggleExpand", window, new System.Windows.RoutedEventArgs());
         Assert.Near(1180d, window.Width, 0.5d);
         Assert.Near(820d, window.Height, 0.5d);
@@ -6898,20 +6930,20 @@ internal static class Program
         InvokeWindowMethod(window, "OnMinimizeToTray", window, new System.Windows.RoutedEventArgs());
         Assert.True(!window.IsVisible);
         Assert.True(!viewModel.IsExpanded);
-        Assert.Near(156d, window.Width, 0.5d);
-        Assert.Near(508d, window.Height, 0.5d);
+        Assert.Near(224d, window.Width, 0.5d);
+        Assert.Near(324d, window.Height, 0.5d);
         InvokeWindowMethod(window, "RestoreFromExternalActivation");
         Assert.True(window.IsVisible);
         Assert.True(!viewModel.IsExpanded);
-        Assert.Near(156d, window.Width, 0.5d);
-        Assert.Near(508d, window.Height, 0.5d);
+        Assert.Near(224d, window.Width, 0.5d);
+        Assert.Near(324d, window.Height, 0.5d);
         InvokeWindowMethod(window, "OnMinimizeToTray", window, new System.Windows.RoutedEventArgs());
         Assert.True(!window.IsVisible);
         tray.ContextMenuStrip?.Items[0].PerformClick();
         window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
         Assert.True(window.IsVisible);
-        Assert.Near(156d, window.Width, 0.5d);
-        Assert.Near(508d, window.Height, 0.5d);
+        Assert.Near(224d, window.Width, 0.5d);
+        Assert.Near(324d, window.Height, 0.5d);
 
         engine.SaveSettingsAsync(new Dictionary<string, string>
         {
@@ -6930,8 +6962,8 @@ internal static class Program
         InvokeWindowMethod(window, "ApplyExpansionState", false);
         Assert.True(!viewModel.IsExpanded);
         Assert.True(window.Topmost);
-        Assert.Near(156d, window.Width, 0.5d);
-        Assert.Near(508d, window.Height, 0.5d);
+        Assert.Near(224d, window.Width, 0.5d);
+        Assert.Near(324d, window.Height, 0.5d);
         window.Topmost = false;
         InvokeWindowMethod(window, "UpdateTopmostState");
 
@@ -6958,7 +6990,8 @@ internal static class Program
         var codexHome = Path.Combine(directory, "codex-home");
         Directory.CreateDirectory(Path.Combine(codexHome, "sessions"));
         using var engine = new UsageEngine(codexHome, Path.Combine(directory, "usage.db"),
-            Path.Combine(directory, "hud.log"));
+            Path.Combine(directory, "hud.log"),
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
         engine.Cadence.MarkQuotaAttempt(DateTimeOffset.UtcNow);
         using var window = new MainWindow(engine, () => Task.CompletedTask, false)
         {
@@ -7116,7 +7149,8 @@ internal static class Program
             var codexHome = Path.Combine(directory, "codex-home");
             Directory.CreateDirectory(Path.Combine(codexHome, "sessions"));
             engine = new UsageEngine(codexHome, Path.Combine(directory, "usage.db"),
-                Path.Combine(directory, "hud.log"));
+                Path.Combine(directory, "hud.log"),
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
             window = new MainWindow(engine, () => Task.CompletedTask, false)
             {
                 ShowActivated = false,
@@ -7687,13 +7721,20 @@ internal static class Program
         var codexHome = Path.Combine(directory, "codex-home");
         Directory.CreateDirectory(Path.Combine(codexHome, "sessions"));
         using var engine = new UsageEngine(codexHome, Path.Combine(directory, "usage.db"),
-            Path.Combine(directory, "hud.log"));
+            Path.Combine(directory, "hud.log"),
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
+        engine.SaveSettingsAsync(new Dictionary<string, string>
+        {
+            [ProviderSettingKeys.CompactLayout] = CompactLayoutModes.Card,
+        }).GetAwaiter().GetResult();
         using var window = new MainWindow(engine, () => Task.CompletedTask, false)
         {
             ShowActivated = false,
             ShowInTaskbar = false,
         };
+        window.OverrideWorkAreaForTests(new System.Windows.Rect(0, 0, 1920, 1080));
         window.Show();
+        RestoreTestWindow(window);
         var viewModelField = typeof(MainWindow).GetField("_viewModel",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
             ?? throw new InvalidOperationException("view_model_field_missing");
@@ -7772,8 +7813,8 @@ internal static class Program
         Assert.Near(work.Left - window.Width + 9, window.Left, 1.5);
 
         Dock("Top");
-        Assert.Near(980, window.Width, 40);
-        Assert.Near(96, window.Height, 0.5);
+        Assert.Near(660, window.Width, 0.5);
+        Assert.Near(80, window.Height, 0.5);
         var topCountdown = (System.Windows.Controls.TextBlock)(window.FindName("CompactTopCountdownText")
             ?? throw new InvalidOperationException("top_countdown_missing"));
         var topRunning = (System.Windows.Controls.TextBlock)(window.FindName("CompactTopRunningText")
@@ -8245,7 +8286,8 @@ internal static class Program
         var home = Path.Combine(directory, "codex-home");
         Directory.CreateDirectory(Path.Combine(home, "sessions"));
         Directory.CreateDirectory(Path.Combine(home, "archived_sessions"));
-        using var engine = new UsageEngine(home, Path.Combine(directory, "usage.db"));
+        using var engine = new UsageEngine(home, Path.Combine(directory, "usage.db"),
+            providers: OfflineCoordinator(), findCodexExecutable: () => null);
         engine.Cadence.MarkQuotaAttempt(DateTimeOffset.UtcNow);
         var callerThread = Environment.CurrentManagedThreadId;
         var frame = engine.RefreshAsync().GetAwaiter().GetResult();
@@ -8564,7 +8606,7 @@ internal static class Program
         var xaml = File.ReadAllText(Path.Combine(projectRoot, "src", "CodexUsageHud.App", "MainWindow.xaml"));
         foreach (var label in new[]
                  {
-                     "原始输入 (raw)", "缓存输入 (raw)", "输出 (raw)", "推理 (raw)", "合计 (raw)",
+                     "原始输入", "缓存输入", "输出", "推理", "合计",
                      "会话累计",
                  })
             Assert.True(xaml.Contains(label, StringComparison.Ordinal));
@@ -11129,7 +11171,7 @@ internal static class Program
         var engineSource = File.ReadAllText(Path.Combine(ProjectRoot(), "src", "CodexUsageHud.Core",
             "UsageEngine.cs"));
         Assert.True(engineSource.Contains("HudProduct.Version", StringComparison.Ordinal));
-        Assert.Equal("1.0.4", HudProduct.Version);
+        Assert.Equal("1.0.5", HudProduct.Version);
     }
 
     private static void LineageCycleTimingAndIsolation(string runRoot)
@@ -12146,7 +12188,8 @@ internal static class Program
     private static string NewRunRoot(string category)
     {
         var root = Path.Combine(ProjectRoot(), ".artifacts", "correction-04", category,
-            DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff", CultureInfo.InvariantCulture));
+            TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTimeOffset.UtcNow, "Taipei Standard Time")
+                .ToString("yyyyMMdd-HHmmss-fffffff", CultureInfo.InvariantCulture));
         Directory.CreateDirectory(root);
         return root;
     }
@@ -12256,8 +12299,7 @@ internal static class Program
         var now = DateTimeOffset.UtcNow;
         var sessionReset = now.AddDays(2);
         var weeklyReset = now.AddDays(8);
-        var coordinator = new ProviderQuotaCoordinator(
-            http: new ScriptedHttpSender((_, _) =>
+        var coordinator = OfflineCoordinator(http: new ScriptedHttpSender((_, _) =>
             {
                 Interlocked.Increment(ref calls);
                 if (phase == "network") throw new HttpRequestException("synthetic-network");
@@ -12275,10 +12317,8 @@ internal static class Program
                 return Task.FromResult(new AllowlistedHttpResponse(status, body, ProviderHttpAllowlist.ClaudeOAuthUsage));
             }),
             claudeTokens: tokens,
-            clock: () => now)
-        {
-            ClaudeLoginStampOverride = () => "stamp-a",
-        };
+            clock: () => now,
+            claudeLoginStamp: () => "stamp-a");
         var settings = ClaudeSettings(true);
         var live = await ReadClaude(coordinator, settings, false).ConfigureAwait(false);
         Assert.Equal(1, calls);
@@ -12400,8 +12440,7 @@ internal static class Program
         var now = DateTimeOffset.UtcNow;
         var sessionReset = now.AddDays(2);
         var weeklyReset = now.AddDays(8);
-        var coordinator = new ProviderQuotaCoordinator(
-            http: new ScriptedHttpSender((_, _) =>
+        var coordinator = OfflineCoordinator(http: new ScriptedHttpSender((_, _) =>
             {
                 Interlocked.Increment(ref calls);
                 if (phase == "network") throw new HttpRequestException("synthetic-network");
@@ -12411,10 +12450,8 @@ internal static class Program
                     ClaudeLimitsBody(25, 40, 16, sessionReset, weeklyReset), ProviderHttpAllowlist.ClaudeOAuthUsage));
             }),
             claudeTokens: new ScriptedClaudeTokens { Token = access },
-            clock: () => now)
-        {
-            ClaudeLoginStampOverride = () => "stamp-a",
-        };
+            clock: () => now,
+            claudeLoginStamp: () => "stamp-a");
         var settings = ClaudeSettings(true);
         var live = await ReadClaude(coordinator, settings, false).ConfigureAwait(false);
         var observed = live.ObservedAtUtc;
@@ -12461,8 +12498,7 @@ internal static class Program
         var now = DateTimeOffset.UtcNow;
         var sessionReset = now.AddHours(-2);
         var weeklyReset = now.AddDays(8);
-        var coordinator = new ProviderQuotaCoordinator(
-            http: new ScriptedHttpSender((_, _) =>
+        var coordinator = OfflineCoordinator(http: new ScriptedHttpSender((_, _) =>
             {
                 Interlocked.Increment(ref calls);
                 var status = phase switch
@@ -12480,10 +12516,8 @@ internal static class Program
                 return Task.FromResult(new AllowlistedHttpResponse(status, body, ProviderHttpAllowlist.ClaudeOAuthUsage));
             }),
             claudeTokens: tokens,
-            clock: () => now)
-        {
-            ClaudeLoginStampOverride = () => stamp,
-        };
+            clock: () => now,
+            claudeLoginStamp: () => stamp);
         var settings = ClaudeSettings(true);
 
         phase = "429";
@@ -12609,8 +12643,7 @@ internal static class Program
         var now = DateTimeOffset.UtcNow;
         var sessionReset = now.AddDays(2);
         var weeklyReset = now.AddDays(8);
-        var coordinator = new ProviderQuotaCoordinator(
-            http: new ScriptedHttpSender((request, _) =>
+        var coordinator = OfflineCoordinator(http: new ScriptedHttpSender((request, _) =>
             {
                 if (request.Url.AbsolutePath.Contains("oauth/usage", StringComparison.Ordinal))
                 {
@@ -12638,10 +12671,8 @@ internal static class Program
             }),
             cursorTokens: new InjectedTokenSource(SyntheticJwt("auth0|cursor-cadence")),
             claudeTokens: new ScriptedClaudeTokens { Token = access },
-            clock: () => now)
-        {
-            ClaudeLoginStampOverride = () => "stamp-a",
-        };
+            clock: () => now,
+            claudeLoginStamp: () => "stamp-a");
         var settings = new ProviderAccessSettings(new[]
         {
             new ProviderSlotSettings(ProviderSlotIds.CodexPrimary, "Codex 当前", false),
@@ -12741,9 +12772,10 @@ internal static class Program
         Directory.CreateDirectory(output);
         var home = Path.Combine(runRoot, "claude-delay-capture", "codex-home");
         Directory.CreateDirectory(Path.Combine(home, "sessions"));
-        var idle = new ProviderQuotaCoordinator { ClaudeLoginStampOverride = () => "capture-stamp" };
+        var idle = OfflineCoordinator();
+        idle.ClaudeLoginStampOverride = () => "capture-stamp";
         using var engine = new UsageEngine(home, Path.Combine(runRoot, "claude-delay-capture", "usage.db"),
-            Path.Combine(runRoot, "claude-delay-capture", "hud.log"), providers: idle);
+            Path.Combine(runRoot, "claude-delay-capture", "hud.log"), providers: idle, findCodexExecutable: () => null);
         using var window = new MainWindow(engine, () => Task.CompletedTask, false);
         window.ShowActivated = false;
         window.ShowInTaskbar = false;
@@ -12799,8 +12831,8 @@ internal static class Program
     {
         var notes = new StringBuilder();
         notes.AppendLine("SYNTHETIC Claude delay top rail. No live quota and no account content.");
-        notes.AppendLine("wide ordinary 1100x78, delayed 1100x100, recovery 1100x78.");
-        notes.AppendLine("narrow ordinary and recovery are 640x96; delayed narrow is 640x112 so the wrapped age stays inside the slot.");
+        notes.AppendLine("wide ordinary 1100x78, delayed 1100x112, recovery 1100x78.");
+        notes.AppendLine("narrow ordinary and recovery are 640x96; delayed narrow is 640x112 so the wrapped age stays inside the seven-slot rail.");
         try
         {
             InvokeWindowMethod(window, "OnCloseSlotDetail", window, new System.Windows.RoutedEventArgs());
@@ -12813,7 +12845,7 @@ internal static class Program
             AssertClaudeTopDelayCleared(window, "60%", "ordinary_wide", notes);
 
             ApplyClaudeTopState(window, viewModel, capture.Board, 1920, 1080, expand: false);
-            AssertClaudeTopSize(window, viewModel, 1100, 100, false, "delayed_wide", notes);
+            AssertClaudeTopSize(window, viewModel, 1100, 112, false, "delayed_wide", notes);
             AssertClaudeTopDelayFits(window, "delayed_wide", notes);
             var widePath = Path.Combine(output, "claude-delay-top-1100.png");
             RenderWindow(window, widePath);
@@ -12910,11 +12942,23 @@ internal static class Program
         var shellBounds = new System.Windows.Rect(0, 0, shell.ActualWidth, shell.ActualHeight);
         var buttonBounds = button.TransformToAncestor(shell).TransformBounds(
             new System.Windows.Rect(0, 0, button.ActualWidth, button.ActualHeight));
+        button.ApplyTemplate();
+        var slotChrome = button.Template.FindName("Chrome", button) as System.Windows.Controls.Border
+            ?? throw new InvalidOperationException(label + "_slot_chrome_missing");
+        var chromeBoundsLocal = new System.Windows.Rect(0, 0, slotChrome.ActualWidth, slotChrome.ActualHeight);
+        var radius = slotChrome.CornerRadius.TopLeft;
+        var roundedChrome = new System.Windows.Media.RectangleGeometry(chromeBoundsLocal, radius, radius);
+        var presenter = FindVisualChild<System.Windows.Controls.ContentPresenter>(slotChrome)
+            ?? throw new InvalidOperationException(label + "_slot_content_missing");
+        var contentBounds = presenter.TransformToAncestor(slotChrome).TransformBounds(
+            new System.Windows.Rect(0, 0, presenter.ActualWidth, presenter.ActualHeight));
         notes.AppendLine(label + " slot_bounds=" + buttonBounds.ToString(CultureInfo.InvariantCulture));
         System.Windows.Rect? percentBounds = null;
         System.Windows.Rect? delayBounds = null;
         foreach (var block in blocks)
         {
+            Assert.True(!block.IsVisible || (block.ActualWidth >= 1d && block.ActualHeight >= 1d),
+                label + "_visible_block_empty:" + block.Text);
             if (block.ActualWidth < 1d || block.ActualHeight < 1d) continue;
             var bounds = block.TransformToAncestor(shell).TransformBounds(
                 new System.Windows.Rect(0, 0, block.ActualWidth, block.ActualHeight));
@@ -12932,6 +12976,19 @@ internal static class Program
                 bounds.Right <= buttonBounds.Right + 1.5d && bounds.Bottom <= buttonBounds.Bottom + 1.5d;
             Assert.True(inside, label + "_clipped:" + block.Text);
             Assert.True(verticalShort <= 1.5d && horizontalShort <= 1.5d, label + "_arranged_short:" + block.Text);
+            if (block.IsVisible)
+            {
+                var visibleBounds = block.TransformToAncestor(slotChrome).TransformBounds(
+                    new System.Windows.Rect(0, 0, block.ActualWidth, block.ActualHeight));
+                notes.AppendLine(label + " visible_bounds=" + visibleBounds.ToString(CultureInfo.InvariantCulture) +
+                    " content_bounds=" + contentBounds.ToString(CultureInfo.InvariantCulture));
+                Assert.True(block.ActualHeight + 0.5d >= block.DesiredSize.Height,
+                    label + "_desired_height_short:" + block.Text + " desired=" + block.DesiredSize.Height + " actual=" + block.ActualHeight);
+                Assert.True(contentBounds.Contains(visibleBounds) &&
+                    roundedChrome.FillContains(visibleBounds.TopLeft) && roundedChrome.FillContains(visibleBounds.TopRight) &&
+                    roundedChrome.FillContains(visibleBounds.BottomLeft) && roundedChrome.FillContains(visibleBounds.BottomRight),
+                    label + "_outside_visible_slot:" + block.Text);
+            }
             if (ReferenceEquals(block, percent)) percentBounds = bounds;
             if (ReferenceEquals(block, delay)) delayBounds = bounds;
         }
@@ -13048,7 +13105,7 @@ internal static class Program
         Assert.True(!ProviderHttpAllowlist.IsAllowed(new Uri("https://api.anthropic.com/v1/messages")), "other_path_allowed");
         Assert.True(!ProviderHttpAllowlist.IsAllowed(new Uri("https://files.anthropic.com/api/oauth/usage")), "other_host_allowed");
 
-        var directory = Path.Combine(Path.GetTempPath(), "cuh-claude-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(TestTempRoot(), "cuh-claude-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try
         {
@@ -13107,7 +13164,8 @@ internal static class Program
             return Task.FromResult(new AllowlistedHttpResponse(status, body, request.Url));
         });
         var tokens = new InjectedClaudeTokenSource(access);
-        var adapter = new ClaudeQuotaAdapter(http, tokens);
+        var adapter = new ClaudeQuotaAdapter(http, tokens,
+            () => DateTimeOffset.Parse("2026-09-28T12:00:00Z", CultureInfo.InvariantCulture));
         var disabled = await adapter.ReadAsync(
             new ProviderSlotSettings(ProviderSlotIds.Claude, "Claude 订阅", false), CancellationToken.None);
         Assert.Equal(QuotaSlotStatus.Disabled, disabled.Status);
@@ -13153,7 +13211,7 @@ internal static class Program
         Assert.DoesNotContain(access, ClaudePublicText(limited));
 
         var expiredAdapter = new ClaudeQuotaAdapter(http, new ClaudeCodeCredentialTokenSource(
-            Path.Combine(Path.GetTempPath(), "cuh-claude-missing-" + Guid.NewGuid().ToString("N"), ".credentials.json")));
+            Path.Combine(TestTempRoot(), "cuh-claude-missing-" + Guid.NewGuid().ToString("N"), ".credentials.json")));
         var beforeExpired = calls;
         var missingLogin = await expiredAdapter.ReadAsync(enabled, CancellationToken.None);
         Assert.Equal(beforeExpired, calls);
@@ -13167,7 +13225,7 @@ internal static class Program
             limitedCalls++;
             return Task.FromResult(new AllowlistedHttpResponse(429, "{}", ProviderHttpAllowlist.ClaudeOAuthUsage));
         });
-        var coordinator = new ProviderQuotaCoordinator(http: limitedHttp,
+        var coordinator = OfflineCoordinator(http: limitedHttp,
             claudeTokens: new InjectedClaudeTokenSource(access));
         var settings = ClaudeSettings(true);
         var board = await coordinator.RefreshAsync(settings, null, CancellationToken.None, true);
@@ -13179,8 +13237,7 @@ internal static class Program
 
         var optInCalls = 0;
         var optInTokens = new InjectedClaudeTokenSource(access);
-        var optIn = new ProviderQuotaCoordinator(
-            http: new ScriptedHttpSender((_, _) =>
+        var optIn = OfflineCoordinator(http: new ScriptedHttpSender((_, _) =>
             {
                 optInCalls++;
                 return Task.FromResult(new AllowlistedHttpResponse(500, "{}", ProviderHttpAllowlist.ClaudeOAuthUsage));
@@ -13389,7 +13446,7 @@ internal static class Program
         var desktopAccess = "synthetic-desktop-access";
         var desktopRefresh = "synthetic-desktop-refresh";
         var otherAccess = "synthetic-desktop-other";
-        var desktopRoot = Path.Combine(Path.GetTempPath(), "cuh-claude-desktop-" + Guid.NewGuid().ToString("N"));
+        var desktopRoot = Path.Combine(TestTempRoot(), "cuh-claude-desktop-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(desktopRoot);
         try
         {
@@ -13565,7 +13622,7 @@ internal static class Program
             new ClaudeLoginInspection(true, true, true, true, false, true, "claude_desktop_oauth")
             {
                 SourceKind = "claude_desktop",
-            }));
+            }), () => DateTimeOffset.Parse("2026-09-28T12:00:00Z", CultureInfo.InvariantCulture));
         var desktopLive = await desktopAdapter.ReadAsync(enabled, CancellationToken.None);
         Assert.Equal(1, desktopCalls);
         Assert.Equal(QuotaSlotStatus.Live, desktopLive.Status);

@@ -17,7 +17,7 @@ public sealed class UsageEngine : IDisposable
     private readonly RolloutIndexer _indexer;
     private readonly StateMetadataReader _stateReader = new();
     private readonly SessionIndexReader _indexReader = new();
-    private readonly CodexExecutableDiscovery _executableDiscovery = new();
+    private readonly Func<string?> _findCodexExecutable;
     // A normal primary quota read can approach five seconds. Leave enough time
     // for the authenticated read to finish before invalidating the account pair.
     private readonly AppServerClient _appServerClient = new(HudProduct.Version,
@@ -53,8 +53,10 @@ public sealed class UsageEngine : IDisposable
 
     public UsageEngine(string codexHome, string databasePath, string? logPath = null,
         Action<string>? appIoBeforeOperation = null, ProviderQuotaCoordinator? providers = null,
-        QuotaSnapshotWriter? quotaSnapshots = null, string? productVersion = null)
+        QuotaSnapshotWriter? quotaSnapshots = null, string? productVersion = null,
+        Func<string?>? findCodexExecutable = null)
     {
+        _findCodexExecutable = findCodexExecutable ?? (() => new CodexExecutableDiscovery().Find());
         _codexHome = CodexHomeResolver.Resolve(codexHome);
         _database = new UsageDatabase(databasePath);
         _indexer = new RolloutIndexer(_database);
@@ -305,7 +307,7 @@ public sealed class UsageEngine : IDisposable
     private async Task RefreshQuotaAsync(List<string> errors, CancellationToken cancellationToken,
         bool manualQuota)
     {
-        var executable = _executableDiscovery.Find();
+        var executable = _findCodexExecutable();
         if (string.IsNullOrWhiteSpace(executable))
         {
             errors.Add("codex_executable_missing");
