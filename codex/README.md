@@ -72,9 +72,28 @@ stays uncertain and is never automatically repeated, even after recovery.
 
 This fixes error classification, not the host's reason for closing a connection.
 If the original launch pipe is no longer usable, recovery remains unavailable.
-The reported Mac failure still needs an authorized real App retest; synthetic
-checks do not establish an actual Lead wake. Preserve its stopped watch and
-pending delivery until that retest is authorized.
+
+### macOS official runtime selection
+
+The reported Intel macOS 15.7 C2/C4 run reached the host's peer-authorization
+gate, which rejected both initial preflight and recovery with
+`missing-code-signing-identity`. The adapter had started official `server.mjs`
+directly with its own Node, skipping the installed official launcher's runtime
+selection. A connect-only probe cannot validate the signed peer used by a real
+tool request.
+
+On macOS, the adapter now runs the selected installed official package's
+`scripts/launch_codex_app_tools_mcp` through `/bin/sh`, passing its `server.mjs`
+as a literal argument. That official launcher chooses the runtime from the
+unchanged host launch environment. The plugin neither copies the launcher nor
+implements its own runtime search. A missing or out-of-cache launcher leaves the
+adapter unavailable. Windows and Linux retain their existing launch path.
+
+Host signature checks, normal tool approvals, actual caller metadata and the
+original launch pipe remain in force. This is an integration correction using
+an installed official entry, not a guarantee of public API stability or Mac wake
+success. Real post-change Mac delivery and original Lead continuation still need
+the authorized retest; preserve the stopped watch and pending delivery until then.
 
 ## 可运行的默认账本
 

@@ -10,7 +10,7 @@ export function officialCacheRootForEnvironment(env) {
   throw new Error('CODEX_HOME, USERPROFILE or HOME is required for the current user official cache.');
 }
 
-export function resolveInstalledOfficialEntry({ appToolsEntry = null, cacheRoot = officialCacheRootForEnvironment(process.env) } = {}) {
+export function resolveInstalledOfficialEntry({ appToolsEntry = null, cacheRoot = officialCacheRootForEnvironment(process.env), platform = process.platform } = {}) {
   const root = fs.realpathSync(cacheRoot);
   const inside = filename => {
     const relative = path.relative(root, fs.realpathSync(filename));
@@ -33,14 +33,21 @@ export function resolveInstalledOfficialEntry({ appToolsEntry = null, cacheRoot 
     for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return right[i] - left[i];
     return 0;
   });
+  let candidate = candidates[0];
   if (appToolsEntry) {
     const override = fs.realpathSync(path.resolve(appToolsEntry));
-    const candidate = candidates.find(item => fs.realpathSync(item.entry) === override);
+    candidate = candidates.find(item => fs.realpathSync(item.entry) === override);
     if (!candidate) throw new Error('appToolsEntry must be a valid server.mjs under the fixed installed official codex-app-tools cache root.');
-    return candidate;
   }
-  if (!candidates.length) throw new Error('No valid installed official codex-app-tools manifest/server entry is available.');
-  return candidates[0];
+  if (!candidate) throw new Error('No valid installed official codex-app-tools manifest/server entry is available.');
+  if (platform !== 'darwin') return candidate;
+  // The installed official launcher chooses the host-provided runtime. Running
+  // its server directly with our PATH Node can fail macOS peer-signature checks.
+  const launcher = path.join(path.dirname(candidate.entry), 'scripts', 'launch_codex_app_tools_mcp');
+  try {
+    if (inside(launcher) && fs.statSync(launcher).isFile()) return { ...candidate, launcher };
+  } catch { /* Report an unavailable installed dependency without a path dump. */ }
+  throw new Error('Installed official macOS launcher is unavailable or outside the official cache; preserving pending state.');
 }
 
 export class OfficialTools {
@@ -91,7 +98,8 @@ export class OfficialTools {
     try { entry = this.entryResolver(); }
     catch (error) { this.adapterStatus = { state: 'unavailable', reason: this.safeError(error), version: null }; throw error; }
     this.adapterStatus = { state: 'connecting', version: entry.version };
-    this.child = spawn(process.execPath, [entry.entry], {
+    this.child = spawn(entry.launcher ? '/bin/sh' : process.execPath,
+      entry.launcher ? [entry.launcher, entry.entry] : [entry.entry], {
       env: this.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
     });
     const child = this.child;

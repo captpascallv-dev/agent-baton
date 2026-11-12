@@ -1,3 +1,29 @@
+# macOS official launcher candidate
+
+2026-11-13 (Asia/Taipei), Windows / Node 24.19.0 / Python 3.12.10.
+Based on main `278fe82`; package version remains 0.5.1. This is a candidate,
+not an installed upgrade or a completed real Mac wake.
+
+```text
+node --test --test-name-pattern "macOS resolves|standard stdio process restart|pipe-closed|unrelated RPC|one read deadline|revocation after leader" codex/tests/public.test.mjs
+node codex/tools/check-public.mjs
+```
+
+Seven targeted results passed with no failures or skips, 18.4 seconds and peak
+0.23 GiB under a 2 GiB cap. The new resolver case explicitly selects the Darwin
+branch on Windows: it accepts the installed launcher, rejects a missing launcher
+and a real junction escaping the official cache, checks the pinned-entry path,
+and preserves the Windows/Linux selection. Existing subprocess, uncertainty,
+deadline, peer-closure and asynchronous authority-revocation checks also passed.
+
+The Mac test fixture now provides a synthetic shell launcher that executes the
+test Node runtime. It never chooses a real host runtime or sends a real message.
+Actual `/bin/sh` execution and signed-host acceptance on Mac remain to be tested;
+the Windows selection check does not prove those outcomes. No full-suite rerun,
+production install, watch, notification or App restart was performed here.
+
+## Preserved pipe-closure classification evidence
+
 # Host pipe closure fix candidate
 
 2026-11-12 (Asia/Taipei), Windows, Node 24.19.0, Python 3.12.10.

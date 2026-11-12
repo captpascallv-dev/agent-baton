@@ -41,12 +41,14 @@ function fixture(t) {
   const home = path.join(base, 'fake-codex-home'); const cache = path.join(home, 'plugins', 'cache', 'openai-bundled', 'codex-app-tools', '0.0.1');
   write(path.join(cache, '.codex-plugin', 'plugin.json'), { name: 'codex-app-tools', version: '0.0.1', author: { name: 'OpenAI' } });
   fs.copyFileSync(path.join(root, 'tests', 'fixtures', 'fake-host.mjs'), path.join(cache, 'server.mjs'));
+  fs.mkdirSync(path.join(cache, 'scripts'));
+  fs.writeFileSync(path.join(cache, 'scripts', 'launch_codex_app_tools_mcp'), '#!/bin/sh\nexec "$TEST_NODE_RUNTIME" "$@"\n');
   write(f.control, {});
   f.config = path.join(base, 'config.json'); write(f.config, { mailboxRoot: './ledger', stateDir: './state', coordinatorThreadId: coordinator, pythonExecutable: python });
   const inherited = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('MAIL_WAKE_')));
   f.env = { ...inherited, CODEX_HOME: home, CODEX_APP_TOOLS_PIPE_PATH: 'test-launch-pipe', CODEX_THREAD_ID: actor,
     HOME: base, USERPROFILE: base,
-    MAIL_WAKE_CONFIG: f.config, TEST_CONTROL: f.control, TEST_LOG: f.log, TEST_STATE: f.stateDir };
+    MAIL_WAKE_CONFIG: f.config, TEST_CONTROL: f.control, TEST_LOG: f.log, TEST_STATE: f.stateDir, TEST_NODE_RUNTIME: process.execPath };
   f.env.TEST_KEY_MODULE = pathToFileURL(path.join(root, 'plugin', 'lib', 'ids.mjs')).href;
   cli(f, ['route', '--project', 'demo', '--owner', owner]);
   t.after(async () => {
@@ -418,6 +420,21 @@ function service(f, filename, env = f.env) {
   });
   return { child, call, toolCalls: () => toolCalls, stderr: () => stderr };
 }
+
+test('macOS resolves the installed official launcher and rejects missing or escaping launcher dependencies', t => {
+  const f = fixture(t), cache = path.join(f.env.CODEX_HOME, 'plugins', 'cache', 'openai-bundled', 'codex-app-tools');
+  const selected = resolveInstalledOfficialEntry({ cacheRoot: cache, platform: 'darwin' });
+  const scripts = path.join(path.dirname(selected.entry), 'scripts');
+  assert.equal(selected.launcher, path.join(scripts, 'launch_codex_app_tools_mcp'));
+  assert.equal(resolveInstalledOfficialEntry({ cacheRoot: cache, platform: 'darwin', appToolsEntry: selected.entry }).launcher, selected.launcher);
+  for (const platform of ['win32', 'linux']) assert.equal(Object.hasOwn(resolveInstalledOfficialEntry({ cacheRoot: cache, platform }), 'launcher'), false);
+  fs.renameSync(scripts, scripts + '.saved');
+  assert.throws(() => resolveInstalledOfficialEntry({ cacheRoot: cache, platform: 'darwin' }), /official macOS launcher is unavailable/);
+  const outside = path.join(f.base, 'outside-official-cache'); fs.mkdirSync(outside);
+  fs.writeFileSync(path.join(outside, 'launch_codex_app_tools_mcp'), '#!/bin/sh\nexit 0\n');
+  fs.symlinkSync(outside, scripts, process.platform === 'win32' ? 'junction' : 'dir');
+  assert.throws(() => resolveInstalledOfficialEntry({ cacheRoot: cache, platform: 'darwin', appToolsEntry: selected.entry }), /outside the official cache/);
+});
 
 test('standard stdio process restart recovers durable exact receipt with ack only; installed dependency lookup stays in current cache', async t => {
   const f = fixture(t); const item = job(f); const cache = path.join(f.env.CODEX_HOME, 'plugins', 'cache', 'openai-bundled', 'codex-app-tools');
