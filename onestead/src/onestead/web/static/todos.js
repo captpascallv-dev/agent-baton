@@ -44,8 +44,15 @@ function checkButton(t, after) {
     class: "check" + (done ? " on" : ""), type: "button", "aria-label": done ? uiText("todos.067") : uiText("todos.066"),
     onclick: async e => {
       e.stopPropagation();
+      const btn = e.currentTarget, row = btn.closest(".todo-row");
+      if (btn.disabled) return;
+      // 写入要提交 git、再重取整页，真实数据要几秒；先把勾打上，失败再退回，免得看起来没点上。
+      const show = on => { btn.classList.toggle("on", on); put(btn, on ? icon(ICON.check) : null); row?.classList.toggle("closed", on); };
+      btn.disabled = true;
+      show(!done);
       const ok = done ? uiText("todos.065") : t.repeat ? uiText("todos.049") : uiText("todos.048");
       if (await saveTodo(t.id, { status: done ? "open" : "done" }, ok)) after();
+      else { btn.disabled = false; show(done); }
     },
   }, done ? icon(ICON.check) : null);
 }
@@ -159,9 +166,9 @@ function quickAdd(projects, after, presetDay) {
                                       repeat: repeat.value }, uiText("todos.040"));
     if (ok) { title.value = ""; repeat.value = ""; after(); }
   };
-  title.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
-  const box = h("div", { class: "card filters quick" }, title, due, time, repeat, proj,
-    h("button", { class: "btn primary", type: "button", onclick: go }, uiText("todos.039")));
+  const addBtn = h("button", { class: "btn primary", type: "button", onclick: go }, uiText("todos.039"));
+  title.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) addBtn.click(); });
+  const box = h("div", { class: "card filters quick" }, title, due, time, repeat, proj, addBtn);
   box.setDay = d => { due.value = d || ""; title.focus(); };
   return box;
 }

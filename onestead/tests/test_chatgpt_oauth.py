@@ -132,6 +132,7 @@ def test_complete_flow_identity_tools_write_and_refresh(client, repo):
     tools = {t["name"]: t for t in tool_list}
     assert "fetch" in tools and list(tools["search"]["inputSchema"]["properties"]) == ["query"]
     writes = {"create_project", "update_project_status", "update_project_summary", "record_decision",
+                  "record_lesson", "update_record", "lesson_digest", "review_lessons", "update_page",
               "handover_role", "add_todos", "update_todo", "register_app", "update_app",
               "register_skill", "update_skill", "propose_home"}
     for tool in tool_list:

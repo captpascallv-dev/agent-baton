@@ -83,7 +83,7 @@ class Workspace(HomeApi, AdminApi, Guard, WorkspaceCore):
                   "workspace_owner": viewer.workspace_owner, "access_context": session["access_context"],
                   "capabilities": capabilities(viewer),
                   "navigation": ["home", "activity", "todos", "projects", "apps", "agents", "skills", "docs",
-                                 "decisions", "members"] + (["approvals"] if principal.is_owner else []),
+                                 "decisions", "members"] + (["lessons", "approvals"] if principal.is_owner else []),
                   "csrf": session["csrf"]}
         if principal.is_owner:
             result["site_domain"] = config.site_domain()
@@ -136,6 +136,7 @@ class Workspace(HomeApi, AdminApi, Guard, WorkspaceCore):
                                    "html": show.html(entry.partition("\n")[2])})
         row["status_total"] = len(entries)
         row["body_html"] = show.html(_strip_title(d.body))
+        row["lessons_html"] = show.html(self.as_actor(request)._lesson_brief(visible, d.id))
         row["apps"] = show.project_apps(visible, d.id)
         return JSONResponse(row)
 
@@ -286,6 +287,38 @@ class Workspace(HomeApi, AdminApi, Guard, WorkspaceCore):
         show = projection_for(request.state.principal)
         return JSONResponse({"html": show.html(str(data.get("text") or "")[:60000])})
 
+    async def lessons_page(self, request: Request):
+        self.require_local_owner(request)
+        base = self.as_actor(request)
+        try:
+            batch = int(request.query_params.get("batch", "1"))
+        except ValueError:
+            raise BaseError(tr("digest.bad_batch")) from None
+        viewer, docs, visible, _, by_id, _ = self.snapshot(request)
+        digest = base._digest_data(viewer, docs, visible, batch)
+        # C 只投影计数；主人的页面不承担伙伴的维护清单。
+        summary = {k: digest[k] for k in ("since", "as_of", "judgments", "judgment_count", "batch", "batches",
+                                         "remaining_batches", "maintenance_count", "maintenance_counts")}
+        items = []
+        include_inactive = request.query_params.get("include_inactive") == "1"
+        from ..records import record_state, sorted_records
+        for doc in sorted_records(visible, "lesson"):
+            state = record_state(doc, base._today())
+            if state == "pending" or state != "active" and not include_inactive:
+                continue
+            pid = doc.meta.get("project")
+            items.append({"id": doc.id, "record_id": doc.rel.removesuffix(".md"), "title": doc.title,
+                          "project": pid, "project_title": by_id[pid].title if pid in by_id else pid or tr("digest.common"),
+                          "state": state, "html": to_html(doc.body)})
+        return JSONResponse({"digest": summary, "items": items})
+
+    async def lessons_review(self, request: Request):
+        self.require_local_owner(request)
+        data = await request.json()
+        if not isinstance(data, dict) or data.keys() - {"confirm", "retire", "done"}:
+            raise BaseError(tr("lesson.bad_fields"))
+        return JSONResponse(self.as_actor(request)._review_lessons_commit(**data))
+
     async def agents_page(self, request: Request):
         base = self.as_actor(request)
         viewer, docs, visible = base._ctx()
@@ -359,6 +392,8 @@ def build_workspace_app(data_root: str | Path, auth: LocalAuth | RemoteAuth) -> 
         Route("/api/projects", ws.project_new, methods=["POST"]),
         Route("/api/docs", ws.docs_page),
         Route("/api/decisions", ws.decisions_page),
+        Route("/api/lessons", ws.lessons_page),
+        Route("/api/lessons/review", ws.lessons_review, methods=["POST"]),
         Route("/api/members", ws.members_page),
         Route("/api/members/{key}/archive", ws.member_archive, methods=["POST"]),
         Route("/api/members/{key}/restore", ws.member_restore, methods=["POST"]),

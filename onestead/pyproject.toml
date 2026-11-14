@@ -26,6 +26,7 @@ onestead-mcp = "onestead.server:main"
 onestead-remote = "onestead.server:main_remote"
 onestead = "onestead.cli:main"
 onestead-backup = "onestead.backup:main"
+onestead-web = "onestead.web.launcher:main"
 # 旧安装的任务、快捷方式和 agent 配置仍使用这些命令。
 company-base-mcp = "onestead.server:main"
 company-base-remote = "onestead.server:main_remote"

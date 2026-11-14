@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .store import Busy, StorageError
+from .git_runtime import run_git
 
 LOCK_NAME = "company-base-write.lock"
 LOCK_WAIT_SECONDS = 30
@@ -54,8 +55,8 @@ def file_lock(lock: Path):
 
 
 def _git(root: Path, args: list[str], env: dict | None = None, stdin: str | None = None) -> str:
-    proc = subprocess.run(
-        ["git", "-C", str(root), *args],
+    proc = run_git(
+        args, root=root,
         input=stdin.encode("utf-8") if stdin is not None else None,
         capture_output=True,
         env=env,
@@ -72,9 +73,11 @@ def author_name(agent_key: str, signed_as: str | None) -> str:
 
 
 def write_and_commit(root: Path, files: dict[str, str | None], subject: str, tool: str,
-                     agent_key: str, signed_as: str | None) -> str:
+                     agent_key: str, signed_as: str | None, *, _initialize_dataset=False) -> str:
     """把 files（相对路径 → 完整新内容；None 表示删掉这个文件）写进仓库并提交，返回短提交号。
     调用方需已持有 write_lock。"""
+    if ".onestead/dataset.json" in files and (not _initialize_dataset or (root / ".onestead/dataset.json").exists()):
+        raise StorageError(tr("bundle.dataset_readonly"))
     old: dict[str, str | None] = {}
     for rel in files:
         path = root / rel
@@ -108,6 +111,6 @@ def write_and_commit(root: Path, files: dict[str, str | None], subject: str, too
             else:
                 with io.open(path, "w", encoding="utf-8", newline="\n") as f:
                     f.write(content)
-        subprocess.run(["git", "-C", str(root), "reset", "-q", "--", *paths], capture_output=True,
+        run_git(["reset", "-q", "--", *paths], root=root, capture_output=True,
                        creationflags=NO_WINDOW)
         raise

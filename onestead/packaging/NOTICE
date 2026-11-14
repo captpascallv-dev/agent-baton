@@ -1,0 +1,9 @@
+Onestead - an AI back office for a small company.
+Copyright the Onestead contributors. Licensed under Apache-2.0.
+
+This runtime also includes CPython, the PyInstaller bootloader (GPL with its
+distribution exception), Git (GPL-2.0), and third-party Python/native libraries.
+Their respective copyright and license texts are retained under LICENSES/ and
+git/*/share/licenses/. SOURCES.md describes exact versions and source retrieval.
+The Git license does not replace the separate licenses of the application or
+other included components.

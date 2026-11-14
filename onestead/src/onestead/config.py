@@ -5,11 +5,38 @@ from __future__ import annotations
 import json
 import os
 import tomllib
+from contextlib import contextmanager
 from pathlib import Path
+
+_paths: dict[str, str] = {}
+
+
+def path_arguments(parser) -> None:
+    """三个本机入口共用的路径参数，子命令前后均可使用。"""
+    import argparse
+
+    for option in ("data", "config", "state"):
+        parser.add_argument("--" + option, default=argparse.SUPPRESS)
+
+
+@contextmanager
+def use_paths(args):
+    global _paths
+    values = {suffix: str(getattr(args, key)) for key, suffix in
+              (("data", "DATA"), ("config", "CONFIG"), ("state", "STATE_DIR"), ("lang", "LANG"))
+              if getattr(args, key, None) is not None}
+    previous = _paths
+    _paths = {**previous, **values}
+    try:
+        yield
+    finally:
+        _paths = previous
 
 
 def env(suffix: str) -> str | None:
     """统一解析 ONESTEAD_* / COMPANY_BASE_*；显式空值也由新名字优先。"""
+    if suffix in _paths:
+        return _paths[suffix]
     for prefix in ("ONESTEAD_", "COMPANY_BASE_"):
         key = prefix + suffix
         if key in os.environ:
@@ -251,3 +278,13 @@ def invalidate() -> None:
     """配置文件刚被写过时清掉缓存，同一次进程里下一回读到新内容。"""
     global _cached
     _cached = None
+
+
+def lessons_brief_chars() -> int:
+    override = env("LESSONS_BRIEF_CHARS")
+    value = override if override is not None else load().get("lessons_brief_chars", 3000)
+    if isinstance(value, str) and value.isdecimal():
+        value = int(value)
+    if type(value) is not int or value < 0:
+        raise _error("lesson.bad_budget")
+    return value

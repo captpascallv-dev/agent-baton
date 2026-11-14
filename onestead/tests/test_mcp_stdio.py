@@ -27,8 +27,9 @@ def test_mcp_tools_and_filtering(repo):
     tools, is_error, text = asyncio.run(_call(repo, "codex", "company"))
     assert {"company", "get_project", "search", "update_project_status", "update_project_summary",
             "record_decision", "handover_role", "get_home_layout", "propose_home",
-            "create_project"} <= tools.keys()
-    assert "现状、下一步、分工、入口变了时用这个改正文；进展照常用 update_project_status 记。" in tools["update_project_summary"]
+            "create_project", "lesson_digest", "review_lessons", "update_page"} <= tools.keys()
+    assert "全读能写的身份还可改 state、title、goal" in tools["update_project_summary"]
+    assert "项目停了或暂时不做，用 state 改成暂停或已结束，并在现状里写清原因。" in tools["update_project_summary"]
     assert f"{OWNER_NAME} 或项目负责人让你开新项目时用；建完用 handover_role 把担任者登记上。" in tools["create_project"]
     assert not is_error and "入职说明" in text and "阿尔法" in text
 

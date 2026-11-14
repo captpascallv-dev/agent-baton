@@ -317,7 +317,7 @@ async function renderDecisions() {
     count.textContent = uiText("manage.100", [items.length]);
     put(body, items.length ? items.map(x => h("tr", { class: "click", onclick: () => showDoc(x.rel) },
       h("td", { class: "nowrap" }, x.date ? md(x.date) : "—"),
-      h("td", {}, h("div", { class: "cell-name", text: x.title }), x.access_note ? h("div", { class: "cell-sub", text: x.access_note }) : null),
+      h("td", {}, h("div", { class: "cell-name", text: x.title }), recordStateView(x), x.access_note ? h("div", { class: "cell-sub", text: x.access_note }) : null),
       h("td", { class: "hide-sm" }, x.project ? h("span", { class: "pill", text: x.project.name }) : h("span", { class: "faint", text: "—" })),
       h("td", { class: "hide-sm" }, x.decided_by || "—", x.recorded_by ? h("div", { class: "cell-sub", text: uiText("manage.099", [x.recorded_by]) }) : null),
       h("td", {}, levelPill(x.sensitivity))))
@@ -404,7 +404,7 @@ function confirmArchive(x, items) {
         + (x.kind === "human" ? uiText("manage.069") : uiText("punct.period")) }))),
     msg,
     h("div", { class: "form-btns" }, h("button", { class: "btn", type: "button", onclick: closeLayer }, uiText("app.121")), go)), "modal");
-  go.addEventListener("click", async () => {
+  go.addEventListener("click", busyHandler(async () => {
     go.disabled = true;
     try {
       await api(`/api/members/${encodeURIComponent(x.key)}/archive`, {});
@@ -413,7 +413,7 @@ function confirmArchive(x, items) {
       if (e.message !== "401") put(msg, h("p", { class: "muted", text: e.message }));
       go.disabled = false;
     }
-  });
+  }));
 }
 
 async function restoreMember(x, btn) {
@@ -580,8 +580,8 @@ async function renderApprovals() {
     const note = h("input", { class: "input grow", placeholder: uiText("manage.013"), maxlength: 300 });
     const yes = h("button", { class: "btn primary", type: "button" }, uiText("manage.012"));
     const no = h("button", { class: "btn", type: "button" }, uiText("manage.011"));
-    yes.addEventListener("click", () => decide(p, true, note.value, [yes, no]));
-    no.addEventListener("click", () => decide(p, false, note.value, [yes, no]));
+    yes.addEventListener("click", busyHandler(() => decide(p, true, note.value, [yes, no])));
+    no.addEventListener("click", busyHandler(() => decide(p, false, note.value, [yes, no])));
     return h("div", { class: "card pad approval" },
       h("div", { class: "approval-head" }, h("span", { class: "pill accent", text: uiText("manage.010") }),
         h("button", { class: "link", type: "button", onclick: () => showProject(p.project), text: p.project_name })),

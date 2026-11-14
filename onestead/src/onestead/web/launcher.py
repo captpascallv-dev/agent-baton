@@ -100,8 +100,8 @@ def _session_token() -> str:
     return token
 
 
-def _bind() -> socket.socket:
-    for port in (UI_PORT, 0):
+def _bind(port: int | None = None) -> socket.socket:
+    for port in (UI_PORT if port is None else port, 0):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):  # Windows：别的程序不能抢绑同一个端口，接走浏览器带的 cookie
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
@@ -115,12 +115,12 @@ def _bind() -> socket.socket:
     raise OSError("本机没有可用端口")
 
 
-def _serve(data_root: str) -> None:
+def _serve(data_root: str, *, port: int | None = None, open_browser: bool = True) -> None:
     import uvicorn
 
     from .app import build_app
 
-    sock = _bind()
+    sock = _bind(port)
     port = sock.getsockname()[1]
     token = _session_token()
     app = build_app(data_root, port, token)
@@ -150,7 +150,8 @@ def _serve(data_root: str) -> None:
     (config.state_dir() / "ui-start.lock").unlink(missing_ok=True)
     threading.Thread(target=watchdog, daemon=True).start()
     threading.Thread(target=scheduled_backup, daemon=True).start()
-    threading.Timer(0.8, _open, args=(state,)).start()
+    if open_browser:
+        threading.Timer(0.8, _open, args=(state,)).start()
     log.info("启动：端口 %s，数据仓库 %s", port, data_root)
     try:
         server.run(sockets=[sock])
@@ -180,7 +181,21 @@ def _backup_once(data_root: str) -> None:
         log.error("备份没做成：%s", e)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="onestead-web")
+    config.path_arguments(parser)
+    parser.add_argument("--port", type=int)
+    parser.add_argument("--no-browser", action="store_true")
+    args = parser.parse_args(argv)
+    if args.port is not None and not 0 <= args.port <= 65535:
+        parser.error("--port: 0..65535")
+    with config.use_paths(args):
+        _main(args)
+
+
+def _main(args) -> None:
     data_root = config.data_dir()
     config.owner_key()
     state_dir = config.state_dir()
@@ -190,7 +205,8 @@ def main() -> None:
                         format="%(asctime)s %(levelname)s %(message)s")
     state = _read_state()
     if state and _alive(state):
-        _open(state)
+        if not args.no_browser:
+            _open(state)
         return
     if not _acquire_start_lock():
         log.error("等不到启动锁：%s", start_lock)
@@ -198,10 +214,11 @@ def main() -> None:
     state = _read_state()  # 等锁期间可能另一个进程已经起好了
     if state and _alive(state):
         start_lock.unlink(missing_ok=True)
-        _open(state)
+        if not args.no_browser:
+            _open(state)
         return
     try:
-        _serve(data_root)
+        _serve(data_root, port=args.port, open_browser=not args.no_browser)
     except Exception:
         log.exception("界面出错退出")
         start_lock.unlink(missing_ok=True)

@@ -19,6 +19,7 @@ FORMAT.md                      optional handbook, type handbook
 handbook/<id>.md               handbook
 assets/<id>.md                 asset
 decisions/<id>.md              decision
+lessons/<id>.md                lesson
 people/<key>.md                person
 home/<owner>.md                home page, state active
 home/<owner>-draft.md          home page draft
@@ -57,7 +58,7 @@ The reader checks the front matter when it loads a file. The writers check more,
 | Field | Required | Values |
 | --- | --- | --- |
 | `id` | yes | Non-empty string. For a project, it must equal the directory name. |
-| `type` | yes | Must match the folder: `handbook`, `asset`, `decision`, `person`, `home`, `todo`, `app`, `skill`, or `project`. |
+| `type` | yes | Must match the folder: `handbook`, `asset`, `decision`, `lesson`, `person`, `home`, `todo`, `app`, `skill`, or `project`. |
 | `sensitivity` | yes | `public`, `internal`, or `restricted`. |
 | `title` | no | Readers fall back to `id`, then to the path. Writers usually set it. |
 
@@ -73,13 +74,15 @@ Path: `handbook/<id>.md`, `assets/<id>.md`, and the optional root `FORMAT.md`.
 
 Beyond the common fields, the reader does not require more. The web app can create both kinds. On that path the id is 2 to 41 characters: a lowercase letter or digit, then lowercase letters, digits, or hyphens. `title` is required there and is a single line of at most 80 characters. The body is at most 60,000 characters.
 
+`update_page(kind, page_id, body, title=None, signed_as=None)` exposes these same limits to full-access writers. `kind` is `handbook` or `asset`; a missing page is created and requires `title`. Updates preserve every other front-matter field, including sensitivity, `visible_to`, and custom fields, and replace only title, body, and `updated`. Assigned writers and remote read-only identities cannot use it; writable full-access remote agents can. Each changed page is one attributed, reversible git commit. The pinned rules in `handbook/company.md` require the owner's explicit direction before editing. CLI: `onestead page-update handbook company --text-file rules.md [--title "Company rules"]`.
+
 ### Project
 
 Path: `projects/<id>/project.md`.
 
 | Field | Required | Values |
 | --- | --- | --- |
-| `state` | on create | On create: `进行中`, `维护中`, `构想中`, `暂停`. Default `构想中`. The web editor also offers `已结束` and `历史`. The reader does not check `state`. |
+| `state` | on create | On create: `进行中`, `维护中`, `构想中`, `暂停`. Default `构想中`. The web editor and full-access `update_project_summary` also offer `已结束` and `历史`. The reader does not check `state`. |
 | `goal` | on create | One line, at most 200 characters. |
 | `roles` | yes to pass the reader | A list. Each item is a map with string `role` and string `who`. Both may be empty only if you never save through the reader check: the reader rejects an item that is missing either string. |
 | `summary_as_of` | no | Date `YYYY-MM-DD`. Create sets it to today. Updating the `现状` section sets it to today. |
@@ -117,7 +120,9 @@ A heading matches when it is `##` plus the name, or the name plus a suffix that 
 ## 现状（截至 2026-10-01）
 ```
 
-`update_project_summary` may change only `现状`, `下一步`, `分工`, and `入口`. Any other key in that call is refused, including `目标` and `边界与注意`. Those stay for a hand edit or the web app.
+`update_project_summary(project_id, sections=None, signed_as=None, state=None, title=None, goal=None)` lets assigned writers change `现状`, `下一步`, `分工`, and `入口` on their granted projects. Full-access writers (`access_mode: full`, including writable remote identities) may also change `目标` and `边界与注意`, and the metadata fields `state`, `title`, and `goal`. Supplying any of these additions as an assigned writer rejects the whole request. Existing calls using only the original four sections retain their previous serialization and section order.
+
+`state` accepts `进行中`, `维护中`, `构想中`, `暂停`, `已结束`, or `历史`. `title` is non-blank, at most 80 characters on one line; the first body title is updated too. `goal` is non-blank, at most 200 characters on one line. Sections can be omitted when changing metadata alone. When a project stops or is put aside, set its state to `暂停` or `已结束` and explain why in `现状`. Progress still goes through `update_project_status`.
 
 A missing section is inserted in the order above. A heading the program does not know is left where it was.
 
@@ -137,7 +142,7 @@ The body created with an empty template is:
 ## 入口
 ```
 
-`边界与注意` is not in that template. Add it by hand when you need it.
+`边界与注意` is not in that template. Full-access writers can add it through `update_project_summary` when needed.
 
 The summary is considered stale in the reader after 14 days. That does not change the file.
 
@@ -177,6 +182,8 @@ Path: `projects/<id>/links.md`. Optional. Plain Markdown. No front matter. No to
 
 ### Decision
 
+Optional `source`, `expires`, `happened`, `pending`, and `supersedes` use the shared [decision and lesson lifecycle](#decision-and-lesson-lifecycle) rules below.
+
 Path: `decisions/<id>.md`.
 
 The id from `record_decision` is `YYYY-MM-DD-<member-key>-HHMMSS`. A collision adds `-2`, `-3`, and so on.
@@ -214,6 +221,98 @@ A full-access writer who marks a decision `restricted` may pass `visible_to`. Un
 
 If the linked project is `restricted`, the decision must be `restricted` too, and its `visible_to` must be a subset of the project's list.
 
+### Lesson
+
+Path: `lessons/<id>.md`. The id follows decisions: `YYYY-MM-DD-<member-key>-HHMMSS`, using Taipei time. Collisions append `-2`, `-3`, and so on.
+
+| Field | Write behavior |
+| --- | --- |
+| `title` | Single line, at most 80 characters. If omitted or blank, the first 40 characters of the conclusion's first line. |
+| `date` | Writer sets today's Taipei date, `YYYY-MM-DD`. |
+| `project` | Optional project id. Missing means company-wide. Assigned writers must name an assigned, visible project. |
+| `source` | Optional `owner` (the owner's own words), `approved` (an agent's wording that the owner explicitly agreed to at the time), or `inferred` (an agent's inference, including a summary of several corrections); input also accepts `主人原话`, `主人认可`, or `伙伴推断` and stores the English value. Other values are refused. |
+| `expires` | Optional valid date `YYYY-MM-DD`, for temporary arrangements. |
+| `happened` | Optional valid date `YYYY-MM-DD`: when the lesson actually happened or was decided, for entries recorded later. Ordering and the date shown in briefs use it; without it, `date` is used. |
+| `pending` | Optional boolean. `true` means awaiting confirmation and not effective. Missing or false means confirmed. |
+| `supersedes` | Optional list of old lesson ids replaced by this entry. |
+| `superseded_by` | System-written id of the replacement on an old entry. |
+| `retired`, `retired_by`, `retire_note` | System-written retirement date, author string, and optional note (at most 200 characters). |
+| `ref` | Optional project-relative file or folder path, or a link, at most 300 characters. Several pointers can be separated by `；`, `;`, or a line break; the digest reports the entry when any one of them is missing. Read projections redact local paths. |
+| `origin_id` | Optional source key for safe replays, at most 120 characters. `import_lessons` skips a key already on a lesson; the JSON API `record_decision` skips a key already on a decision. |
+| `recorded_by` | Writer's git author string, including signature when present. |
+| `sensitivity`, `visible_to`, `access_note` | Same rules as decisions, including the restricted project's reader subset. |
+| `updated`, `updated_by` | Writer sets today's date and author string. |
+
+Only `lesson` is required by `record_lesson`. A conclusion, `how`, or `why` accepts at most 4,000 characters; optional blank sections are omitted. Caller-provided level-2 headings become level-3, as with decisions. Stored section headings remain fixed:
+
+```markdown
+# <title>
+
+## 结论
+
+<lesson>
+
+## 怎么用
+
+<how to apply it next time, if provided>
+
+## 为什么
+
+<why, if provided>
+```
+
+Missing `source`, a conclusion over 500 characters, and a project brief over its configured budget produce success hints, including for owner writes. They do not block writing. There is no approval step or content-quality gate.
+
+### Lesson digest and owner review
+
+`lesson_digest(batch=1, notify=False)` computes the calling viewer's visible lessons **and decisions** on demand. It installs no schedule, delivery channel, or model call. The human is `viewer.workspace_owner`: the caller themselves when human, or the agent's registered `owner`. The period starts at that human's `lessons_reviewed_at`, or seven days before the current Taipei time when absent. New records fall in `(since, now]`: their `date` plus the generated id's `HHMMSS` suffix determines creation time; manual ids without a valid time suffix use midnight on `date`. Missing dates cannot count as newly recorded. `updated` never makes an old record new again.
+
+The digest has three blocks:
+
+- **A, new records:** counts by project, company-wide first, with lessons and decisions counted separately. Inactive new records still count as newly recorded.
+- **B, owner judgments:** all pending records, oldest first with days waiting; then new active records whose `source` is neither `owner` nor `approved` (missing source explicitly says "Source missing"); then groups of similar active lessons from different projects, suggesting one company-wide lesson. Each group counts as one judgment. Each batch contains at most 10 judgments, numbered from 1 within the batch, with total and remaining batch counts. Each record shows its id, kind, project, title, first 120 conclusion characters, and source. Retired and superseded records never reappear as pending or inferred judgments.
+- **C, agent maintenance:** expired records (retire or revise expiry); missing local file references (fix the pointer); groups of similar active lessons within one project or company-wide (consider supersession); scopes whose rationale-bearing entries together exceed the scope's brief budget (the project's own `lessons_brief_chars`, else the global one) (clear less important `why` with `update_record`); and scopes whose brief exceeds that limit. Each entry or grouped issue counts as one maintenance task, so one record can contribute to multiple tasks. Rationale and overflow use the same budget rule as the brief (`records.brief_size` / `_brief_split`). The human sees only maintenance counts and outcomes; the presenting agent receives the work list.
+
+Local file checks split `ref` into its pointers (`；`, `;`, or a line break) and check each one; a file or a folder counts as present. Absolute paths are checked directly. Relative references are checked against **every** directory in the associated project's `paths` and are broken only if none has the file or folder. A relative reference without project directories is unresolved and is skipped rather than interpreted against the process working directory. URL schemes are skipped. Remote callers never check local files. Retired and superseded records do not need pointer maintenance.
+
+Similarity is deterministic. Concatenate title and conclusion, strip whitespace and Unicode punctuation, form the set of overlapping character bigrams, then compute Jaccard intersection / union. An empty union scores zero. The module constant `digest.SIMILARITY_THRESHOLD` is **0.5**, inclusive. Groups are connected components of qualifying pairs: cross-project edges between named projects for B, same-project edges (including company-wide) for C. No model judges conflicts or suitability; the presenting agent does so during the conversation.
+
+`notify=true` writes `lessons_notified_at` on the associated **human** member file in one commit. It means an agent is already presenting the digest. `review_lessons(confirm=None, retire=None, done=False, signed_as=None)` accepts pending ids to confirm and objects `{"id":"...","note":"optional"}` to retire. Id resolution and modifications use the same preparation path as `update_record`; directory-qualified ids disambiguate lessons and decisions. Duplicate references to the same record in one request are rejected. All ids, visibility, and write permissions are checked before any file is written. One bad id rejects the entire request, including `done`. Successful changes, including timestamps, share one commit. `confirm=[]`, `retire=[]`, and `done=false` alone are an error.
+
+`done=true` stamps `lessons_reviewed_at` and clears `lessons_notified_at` after all batches have been discussed. Humans may record their own personal timestamps; an agent needs write permission and may stamp only its registered human. Editing records additionally requires the ordinary record write permissions. An unchanged operation returns no commit.
+
+`company()` reminds a registered human or their agent when review is at least seven days old (or absent) **and** B or C has visible content. A notification later than the last review, and less than seven days old, suppresses the reminder. Scope is recomputed using the calling viewer, including assigned and remote readers. The reminder directs the agent to present B in conversation one batch at a time using `lesson_digest(notify=true)`; C is handled by the agent. Company-wide promotions are new lessons without `project_id`, with `supersedes` naming the project lessons.
+
+CLI equivalents: `onestead digest [--batch N] [--notify]`; `onestead review --confirm <id> [--confirm <id> ...] --retire '[{"id":"...","note":"..."}]' [--done]`. Supply at least one review action. The owner's web Lessons page uses this same review writer, with the owner as git author, exposes B in batches and only C counts, and groups current lessons with company-wide first. Its inactive switch includes retired, superseded, and expired lessons.
+
+### Decision and lesson lifecycle
+
+`record_decision` additionally accepts optional `source`, `expires`, `happened`, `pending`, and `supersedes`, with exactly the lesson meanings above. A decision keeps its existing `决定` and `理由` body sections. Without new arguments, its stored bytes are unchanged from the previous format; existing files need no migration. The system may later add `superseded_by`, `retired`, `retired_by`, `retire_note`, and `updated_by` when replacing or editing it.
+
+Status is derived on read, never stored as a separate field. The first matching rule wins:
+
+1. A present `retired` date: `retired` (withdrawn).
+2. A present `superseded_by`: `superseded`, pointing to the replacement when visible.
+3. `pending: true`: `pending` (not effective).
+4. `expires` earlier than today's Taipei date: `expired`. An entry expiring today remains current.
+5. Otherwise: `active` (current).
+
+`list_lessons` and **`list_decisions` now default to current entries only**. Pending titles appear separately at the end; their content is not presented as effective. `include_inactive=true` also includes retired, superseded, and expired entries with their status. Entries are newest first within each group; lessons group company-wide entries before projects. Search, document opening, and history still allow access to inactive records.
+
+`supersedes` replaces records of the same kind only. The writer must be able to see and write every old entry. Cross-project replacement is allowed, including promoting several project lessons to one company-wide lesson for a full-access writer. Each old entry receives `superseded_by`, `updated`, and `updated_by` in the same commit that creates the new entry. A missing, unwritable, already retired, or already superseded old entry rejects the entire write. For a superseded entry the error identifies the replacement if the caller can see it. Imports validate and prepare the whole batch before writing; one invalid item rejects the whole batch.
+
+`update_record(record_id, changes, signed_as=None)` edits a lesson or decision. An id can be bare or prefixed with `lessons/` or `decisions/` (an optional `.md` suffix is accepted). If both kinds have the bare id, specify the directory. The same visibility, writer, project-grant, and restricted-reader rules apply to edits. Any authorized writer may edit another author's entry.
+
+Allowed changes for both kinds: `title`, `source`, `expires` (null clears), `pending` (false confirms), and `retired` (true retires, false clears the three retirement fields). An optional `note` accompanies `retired=true`. Lessons also allow `lesson`, `how`, `why`, `ref`, and `project` (null makes it company-wide). Decisions also allow `decision` and `reason`. Unknown fields, including `id`, `date`, `recorded_by`, `superseded_by`, and `supersedes`, reject the entire change. An edit that makes no semantic change creates no commit.
+
+`company()` includes the current project's lesson brief when started in its directory, and shows company-wide lessons to every member right after the company handbook, before the project table. `get_project()` includes current lessons after the project body and before progress. Each brief entry is one line: title (omitted when it is just the start of the conclusion), conclusion, how, why, source, date, and optional details reference. Entries that have a `why` are the important or counterintuitive ones, so they come first and are always shown in full, even past the budget. The configurable `lessons_brief_chars` (default 3,000, environment `ONESTEAD_LESSONS_BRIEF_CHARS`) then limits the other complete entries, newest first. The budget counts each entry's conclusion, how, and why only; title, source, date, and reference do not count, the same rule as `list_lessons`; the project brief and the company-wide brief each have their own budget. Once the next complete entry would exceed the budget, the remaining entries are listed by title, one per line, so titles should read as complete rules; titles get their own budget of the same size, and anything beyond it is reported as a count with a pointer to `list_lessons`. A project may set `lessons_brief_chars` (a non-negative integer) in its own front matter to override the global budget; a missing or invalid value falls back to the global one. Overflow asks the project lead (or, for company-wide lessons, whoever maintains them) to consolidate, replace, or retire entries. Pending entries contribute a count only.
+
+### Target history
+
+`history(target, limit=10)` accepts a visible record id or repository-relative Markdown path. A project expands to `project.md`, currently present `status.md` and `links.md`, and `status/*.md` archives. An id matching several kinds includes all visible matches, with each file labeled by path. Missing and invisible targets return the same error; personal to-dos remain private to their human and that human's agents.
+
+The latest 1–50 relevant commits are shown newest first, with Taipei time (`YYYY-MM-DD HH:MM`), member and signature, tool parsed from the commit message, readable subject, visible files, and added/deleted line counts. Only the latest commit includes a diff excerpt, at most 1,500 characters. Remote and assigned readers receive the usual redacted text. The web activity view and agent history share git reading and subject translation.
+
 ### Person
 
 Path: `people/<id>.md`. The reader indexes members by `agent_key`, not by `id`. The web app sets them to the same string.
@@ -232,11 +331,15 @@ Path: `people/<id>.md`. The reader indexes members by `agent_key`, not by `id`. 
 | `role` | no | Free text, a label such as a job title. At most 120 characters on the web form. Not a project role. |
 | `connect` | no | Free text, at most 300 characters. Not used to authenticate. |
 | `signers` | no | A list of names. See [Commits](#commits). The reader does not check the shape of this field. |
+| `lessons_reviewed_at` | human only, tool-managed | Quoted `"YYYY-MM-DD HH:MM"` string in Asia/Taipei (UTC+8); set by `review_lessons(done=true)`. |
+| `lessons_notified_at` | human only, tool-managed | Quoted `"YYYY-MM-DD HH:MM"` string in Asia/Taipei (UTC+8); set by `lesson_digest(notify=true)` and cleared when review is done. |
 | `archived` | no | Boolean. Missing or false means the member is active. `true` means disabled. The file stays. |
 | `feishu_open_id` | no | A non-empty string. Two active members with the same value are both marked as problems. Feishu is optional: without configuration, binding fields are hidden and cannot be edited on the web; member saves and disabling preserve existing bindings. |
 | `updated` | no | Date the web app sets on save. |
 
 The reserved owner id cannot be used from MCP or the CLI. Set `owner_key` (or `ONESTEAD_OWNER`) to that member's `agent_key`. There is no compiled default. A missing value, or a value that is not a legal member key, is an error.
+
+The two lesson timestamps belong to the human's `people/<key>.md`, never the agent's file. They are not editable fields in member management; web saves preserve both values and their quoting. Only the associated human or a writable agent owned by that human may change them through the digest/review tools.
 
 A duplicate `agent_key` marks the colliding files as problems, so the key cannot be used. If one of the copies is archived, the archived file keeps the key and the active copies are the ones marked.
 
@@ -395,15 +498,15 @@ A viewer's human key is their own key when they are human, and their `owner` whe
 3. An archived person file is visible only to the local owner, and only from the local app.
 4. A known full-access viewer sees the document. This includes the local owner and any member with `access_mode: full`.
 5. A problem file is hidden from everyone else.
-6. A decision or an app that names a `project` is hidden when that project is missing or not visible to this viewer.
+6. A decision, lesson, or app that names a `project` is hidden when that project is missing or not visible to this viewer. A project lesson also requires the project in an assigned member's grants, even if public.
 7. An anonymous viewer sees a document only when it is `public`.
 8. A skill file is hidden from assigned viewers on this path. Sharing uses the package channel below.
 9. A person file is visible to an assigned viewer when its `agent_key` is the viewer or the viewer's human. Sensitivity is not applied on this step.
 10. A `public` document is visible.
 11. Otherwise the viewer needs a grant:
-    - `handbook`: any known member.
+    - `handbook`, and `lesson` without a `project`: any known member. Anonymous readers see only public company-wide lessons.
     - `project`, `project-status`, `project-links`: the project id is in `projects`.
-    - `decision` and `app`: the `project` id is in `projects`. No project means no grant.
+    - `decision`, project-linked `lesson`, and `app`: the `project` id is in `projects`. A decision or app without a project has no grant on this step.
     - `asset`: the asset id is in `assets`.
     - Anything else: no grant.
 12. A `restricted` document also needs the viewer's human key in `visible_to`. An empty list grants nobody on this step. The local owner already passed at step 4, so the owner is not listed.
@@ -416,14 +519,14 @@ Assigned readers, remote readers, and the local owner can be given a shared pack
 
 An assigned reader gets a skill that is `public`, plus skills listed in their `skills` grant. A remote full-access reader, and the local owner, get every scanned skill that is safe to pack. A local full-access agent reads skills through the on-machine scan, not through this package list. A skill that is broken, or that fails the id check, is not packed.
 
-Remote text has local paths removed, and values that look like secrets are replaced. The file in git is not rewritten. Local MCP output is not passed through that filter.
+Remote text has local paths removed, and values that look like secrets are replaced. The file in git is not rewritten. Lesson and target-history projections also redact text for assigned readers, including local ones.
 
 ### Who can write
 
 - The local owner can write.
 - Another member needs `can_write: true` on their own file.
 - An agent also needs `can_write: true` on the human they belong to.
-- An assigned member can append status, update the four summary sections, and record decisions only on projects in their `projects` grant. Being able to read a public project is not enough to write it.
+- An assigned member can append status, update the four summary sections, record decisions and lessons, and edit those records only on projects in their `projects` grant. Being able to read a public project is not enough to write it.
 - Creating a project needs full access, `can_write`, and a local session. A remote caller cannot create a project.
 - The reserved owner id cannot be the MCP or CLI caller.
 
@@ -466,3 +569,28 @@ If a member file has `signers`, a write as that member is refused unless `signed
 A save that does not change the file does not create a commit. If the commit fails, the app puts the files back.
 
 There is no delete tool for company facts. Disabling a member sets `archived: true`. Adopting or discarding a home draft is the exception: that commit deletes `home/<owner>-draft.md`.
+
+## Dataset identity
+
+Bootstrap protocol 1 stores `.onestead/dataset.json` in the data repository:
+
+```json
+{"protocol":1,"dataset_id":"9f10092291974a2b90d40ea21dc753d3","owner_key":"owner-a92bba2f10057cfa"}
+```
+
+`dataset_id` is a randomly generated UUID4 encoded as 32 lowercase hexadecimal
+characters (122 random bits). It identifies a company dataset independently of
+its owner, executable version and filesystem location. It is committed with
+the initial repository and is retained by ordinary writes, backups, clones and
+restores. Two datasets owned by the same person have distinct identifiers.
+`owner_key` lets a host recover the local web owner after relocating/restoring
+the dataset without deriving it from an OS username or a personal path.
+
+The file belongs to the initialization protocol, not an editable document type.
+It is outside the document scanner, so `onestead check` does not flag it as an
+unknown/problem document. Ordinary writes and web reverts cannot change it.
+`inspect` validates its syntax and equality with its committed version. A legacy
+dataset without this file is `needs_bootstrap`; bootstrap creates it and any
+missing requested member in one scoped Git commit. Invalid or uncommitted
+identity metadata requires repair and is never silently replaced. Commands,
+states and machine error codes are in [Private local runtime](bundle.md).

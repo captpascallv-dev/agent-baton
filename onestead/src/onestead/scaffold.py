@@ -14,12 +14,12 @@ from importlib.resources import files
 from pathlib import Path
 
 from . import config, gitops
-from .connect import connect_prompt, toml_basic_string
+from .textutil import toml_basic_string
 from .store import BaseError, now_taipei, valid_person_key
 from .textutil import _check_text
 
 _PLACEHOLDER = re.compile(r"\{\{(owner_key|owner_name|owner_name_yaml|today|now)\}\}")
-_EMPTY_DIRS = ("decisions", "assets", "apps", "todos", "home", "skills")
+_EMPTY_DIRS = ("lessons", "decisions", "assets", "apps", "todos", "home", "skills")
 _TEMPLATE_FILES = {
     "FORMAT.md": "format.md",
     "handbook/company.md": "company.md",
@@ -30,6 +30,8 @@ _TEMPLATE_FILES = {
 
 
 def init_repo(args) -> None:
+    from .connect import connect_prompt
+
     owner = (args.owner or "").strip()
     if not valid_person_key(owner):
         raise BaseError(tr("agent.358"))

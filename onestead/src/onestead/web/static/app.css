@@ -209,6 +209,12 @@ select.input { padding-right: 28px; appearance: none; background-image: linear-g
 .btn.primary:hover { background: var(--accent-press); }
 .btn.danger { background: var(--red); color: #fff; border-color: transparent; }
 .btn:disabled { opacity: .5; cursor: default; }
+/* 处理中（app.js busyHandler）：光标马上换；超过 0.12 秒才变淡、按钮里转圈，快的操作不闪。 */
+.busy, .btn.busy:disabled { cursor: progress; }
+.busy { opacity: .6; transition: opacity var(--t-fast) var(--ease) .12s; }
+.btn.busy::after { content: ""; width: 11px; height: 11px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite, appear .12s steps(1, end); }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes appear { from { opacity: 0; } }
 .btn.ghost { border-color: transparent; background: none; }
 .btn.ghost:hover { background: var(--fill); }
 .link-danger { border: none; background: none; padding: 0; color: var(--red); font-size: 13px; cursor: pointer; }
@@ -618,3 +624,10 @@ table.t th.sk-col { text-align: center; }
   .sk-install { grid-template-columns: 72px 86px minmax(0, 1fr); }
   .site-panel .btn { max-width: 100%; height: auto; min-height: 32px; white-space: normal; text-align: left; }
 }
+.lesson-block { margin: 28px 0; }
+.lesson-card { padding: 20px; margin: 14px 0; border: 1px solid var(--line, #ddd); border-radius: 12px; }
+.lesson-entry + .lesson-entry { border-top: 1px solid var(--line, #ddd); margin-top: 16px; padding-top: 16px; }
+.lesson-card h3, .lesson-card h4 { margin: 0 0 10px; }
+.lesson-card summary { cursor: pointer; font-weight: 600; }
+.lesson-card p { overflow-wrap: anywhere; }
+.lesson-block .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; }

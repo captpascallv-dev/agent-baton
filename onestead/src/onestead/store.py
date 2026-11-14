@@ -219,7 +219,7 @@ class Store:
         if fmt.exists():
             docs.append(read_doc(root, fmt, "handbook"))
         for folder, kind in (("handbook", "handbook"), ("assets", "asset"),
-                             ("decisions", "decision"), ("people", "person"), ("home", "home"),
+                             ("decisions", "decision"), ("lessons", "lesson"), ("people", "person"), ("home", "home"),
                              ("todos", "todo"), ("apps", "app"), ("skills", "skill")):
             for path in sorted((root / folder).glob("*.md")):
                 docs.append(read_doc(root, path, kind))
@@ -360,7 +360,10 @@ class Viewer:
             return True
         if doc.problem:
             return False
-        if doc.kind in ("decision", "app") and doc.meta.get("project"):
+        # 项目经验随授权项目；public 不绕过按授权读者的项目名单。
+        if doc.kind == "lesson" and doc.meta.get("project") and self.known and self.assigned and doc.meta["project"] not in self.projects:
+            return False
+        if doc.kind in ("decision", "lesson", "app") and doc.meta.get("project"):
             parent = self.project_docs.get(doc.meta["project"])
             if parent is None or not self.can_see(parent):
                 return False
@@ -372,11 +375,11 @@ class Viewer:
             return doc.meta.get("agent_key") in self.names
         if doc.sensitivity == "public":
             return True
-        if doc.kind == "handbook":
+        if doc.kind == "handbook" or (doc.kind == "lesson" and not doc.meta.get("project")):
             granted = True
         elif doc.kind in ("project", "project-status", "project-links"):
             granted = doc.id in self.projects
-        elif doc.kind in ("decision", "app"):
+        elif doc.kind in ("decision", "lesson", "app"):
             granted = doc.meta.get("project") in self.projects
         elif doc.kind == "asset":
             granted = doc.id in self.assets

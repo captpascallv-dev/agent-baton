@@ -24,9 +24,7 @@ def tool_path(name: str) -> Path:
     return Path(sysconfig.get_path("scripts")) / f"{name}{suffix}"
 
 
-def toml_basic_string(value: str) -> str:
-    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
+from .textutil import toml_basic_string
 
 
 def connect_prompt(owner_name: str) -> str:

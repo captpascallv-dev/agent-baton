@@ -68,3 +68,18 @@ def test_open_cookie_outlives_the_browser_session(client):
     assert r.status_code == 303
     cookie = r.headers["set-cookie"]
     assert f"Max-Age={30 * 86400}" in cookie and "HttpOnly" in cookie and "SameSite=strict" in cookie
+
+
+def test_cli_web_subcommand_uses_same_launcher_and_paths(tmp_path, monkeypatch):
+    from onestead.cli import run
+    seen = {}
+
+    def fake_main(args):
+        seen.update(port=args.port, no_browser=args.no_browser, state=config.state_dir())
+
+    monkeypatch.setattr(launcher, "_main", fake_main)
+    assert run(["web", "--state", str(tmp_path / "s"), "--port", "0", "--no-browser"]) == 0
+    assert seen == {"port": 0, "no_browser": True, "state": tmp_path / "s"}
+    assert run(["--state", str(tmp_path / "t"), "web"]) == 0
+    assert seen == {"port": None, "no_browser": False, "state": tmp_path / "t"}
+    assert run(["web", "--port", "70000"]) == 2

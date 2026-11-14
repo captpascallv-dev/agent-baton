@@ -31,7 +31,7 @@ def test_catalogs_have_identical_keys_and_parameters():
     for key in zh:
         assert set(re.findall(r"\{\d+\}", zh[key])) == set(re.findall(r"\{\d+\}", en[key])), key
     assert all(len(pair) == 2 and all(pair) for pair in TEXT.values())
-    for name in ("app.js", "apps.js", "manage.js", "skills.js", "todos.js", "i18n.js"):
+    for name in ("app.js", "apps.js", "manage.js", "skills.js", "todos.js", "lessons.js", "i18n.js"):
         source = (STATIC / name).read_text(encoding="utf-8")
         assert set(re.findall(r'uiText\("([\w.-]+)"', source)) <= zh.keys(), name
     html = (STATIC / "index.html").read_text(encoding="utf-8")
@@ -39,7 +39,7 @@ def test_catalogs_have_identical_keys_and_parameters():
 
 
 def test_business_scripts_have_no_chinese_outside_comments():
-    for name in ("app.js", "apps.js", "manage.js", "skills.js", "todos.js", "index.html"):
+    for name in ("app.js", "apps.js", "manage.js", "skills.js", "todos.js", "lessons.js", "index.html"):
         source = (STATIC / name).read_text(encoding="utf-8")
         # 注释里的中文保留；协议值也不能靠 Unicode 转义藏在业务脚本里。
         source = re.sub(r"/\*.*?\*/|//[^\n]*|<!--.*?-->", "", source, flags=re.S)

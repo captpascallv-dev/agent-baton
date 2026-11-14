@@ -19,10 +19,13 @@ from . import gitops
 from .apps import AppMixin
 from .handover import _status_entries, insiders, open_applies
 from .home import HomeMixin
-from .manage import ID_RE, MAX_BODY, ManageMixin
-from .projectbody import (SUMMARY_SECTIONS, _apply_summary_sections, _clean_summary_sections,
+from .history import HistoryMixin
+from .manage import ID_RE, MAX_BODY, STATES, ManageMixin
+from .digest import DigestMixin
+from .projectbody import (BODY_ORDER, SUMMARY_SECTIONS, _apply_summary_sections, _clean_summary_sections,
                           _parse_sections, _section_name)
 from .redact import documents, safe_text
+from .records import RecordMixin, clean_source, clean_expires, clean_flag, clean_supersedes
 from .skills import SkillMixin
 from .sites import SiteMixin
 from .todos import TodoMixin, notice
@@ -45,13 +48,13 @@ STATUS_RECENT_HOURS = 2  # 同一项目里同一身份和署名这么久内又�
 STATUS_LONG = 800  # 一条进展超过这么多字，提醒只写结果
 
 KIND_ORDER = {"handbook": 0, "project": 1, "project-status": 2, "project-links": 3,
-              "decision": 4, "asset": 5, "person": 6, "home": 7, "todo": 8, "app": 9, "skill": 10}
+              "lesson": 4, "decision": 4, "asset": 5, "person": 6, "home": 7, "todo": 8, "app": 9, "skill": 10}
 KIND_NAMES = {"handbook": "手册", "project": "项目", "project-status": "项目进展",
-              "project-links": "项目链接", "decision": "决定", "asset": "资产", "person": "成员",
+              "project-links": "项目链接", "lesson": "经验", "decision": "决定", "asset": "资产", "person": "成员",
               "home": "首页", "todo": "待办", "app": "应用", "skill": "Skill"}
 
 
-class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, TokenMixin, SiteMixin):
+class CompanyBase(DigestMixin, HistoryMixin, RecordMixin, TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, TokenMixin, SiteMixin):
     def __init__(self, root: str | Path, agent_key: str | None, now=now_taipei, allow_owner: bool = False,
                  require_remote: bool = False, auth_check=None):
         config.owner_key()
@@ -193,9 +196,16 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
         unnotified = sum(notice(d.meta) == "unnotified" for d in self._todos(visible))
         if unnotified:
             out += [tr("ask.company", count=unnotified, owner=self.owner_name), ""]
+        digest_hint = self._digest_hint(viewer, docs, visible)
+        if digest_hint:
+            out += [digest_hint, ""]
         company = self._find(visible, "handbook", "company")
         if company:
             out += [_strip_title(company.body), ""]
+        # 公司共用经验紧跟置顶规则，任何成员开工第一屏就读到（升成共用的意义就在这里）。
+        common_lessons = self._lesson_brief(visible, None, viewer)
+        if common_lessons:
+            out += ["## " + tr("lesson.company"), "", common_lessons, ""]
         out += [tr("agent.084"), "", self._projects_table(visible), "",
                 tr("agent.085"), ""]
         collab = self._find(visible, "handbook", "collaboration")
@@ -227,7 +237,9 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
         body = "\n".join(out).strip() + "\n"
         if located is None:
             return body
-        return self._located_block(located, visible).rstrip("\n") + "\n\n" + body
+        lessons = self._lesson_brief(visible, located.id, viewer)
+        return (self._located_block(located, visible).rstrip("\n")
+                + ("\n\n" + tr("lesson.current") + "\n\n" + lessons if lessons else "") + "\n\n" + body)
 
     def _project_at(self, visible: list[Doc], cwd: str | None) -> Doc | None:
         current = os.getcwd() if cwd is None else cwd
@@ -326,6 +338,9 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
             if items:
                 body = _with_local_dirs(body, items)
         out += ["", body]
+        lessons = self._lesson_brief(visible, doc.id, viewer)
+        if lessons:
+            out += ["", "## " + tr("lesson.current"), "", lessons, tr("lesson.see_all")]
         status = self._find_kind(visible, "project-status", doc)
         if status:
             entries = _status_entries(status.body)
@@ -434,24 +449,8 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
             raise BaseError(tr("agent.097", v0=asset_id, v1=tr(NOT_FOUND)))
         return f"{self._restricted_banner(doc)}# {doc.title}\n\n{_strip_title(doc.body)}\n"
 
-    def list_decisions(self, project_id: str | None = None, limit: int = 20) -> str:
-        _, _, visible = self._ctx()
-        decisions = [d for d in visible if d.kind == "decision"]
-        if project_id:
-            decisions = [d for d in decisions if d.meta.get("project") == project_id.strip()]
-        decisions.sort(key=lambda d: (str(_as_date(d.meta.get("date")) or ""), d.id), reverse=True)
-        limit = max(1, min(int(limit), 100))
-        if not decisions:
-            return tr("agent.075")
-        out = [tr("agent.154", v0=len(decisions)) + (tr("agent.160", v0=limit) if len(decisions) > limit else "") + "）", ""]
-        for d in decisions[:limit]:
-            m = d.meta
-            out.append(f"## {m.get('date')} · {d.title}")
-            info = tr("agent.098", v0=m.get('decided_by', tr("agent.161")), v1=m.get('recorded_by', tr("agent.161")))
-            if m.get("project"):
-                info += tr("agent.135", v0=m['project'])
-            out += ["", self._restricted_banner(d) + info, "", _strip_title(d.body).replace("\n## ", "\n### "), ""]
-        return "\n".join(out).strip() + "\n"
+    def list_decisions(self, project_id: str | None = None, limit: int = 20, include_inactive: bool = False) -> str:
+        return self._list_records("decision", project_id, include_inactive, limit)
 
     # ---------- 写 ----------
 
@@ -464,7 +463,7 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
         if not viewer.can_write:
             raise Forbidden(self._identity_line(viewer) + tr("agent.099"))
         if viewer.assigned and operation not in (
-                "update_project_status", "update_project_summary", "record_decision", "personal"):
+                "update_project_status", "update_project_summary", "record_decision", "record_lesson", "update_record", "personal"):
             raise Forbidden(tr("agent.100"))
         self._require_signer(viewer)
         return viewer, docs, visible
@@ -635,23 +634,37 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
                                              "update_project_status", viewer.key, signed_as)
         return rel, commit, hint
 
-    def update_project_summary(self, project_id: str, sections: dict, signed_as: str | None = None) -> str:
-        """改现状、下一步、分工、入口。能记进展的身份就能改，判断和 update_project_status 同一套。"""
+    def update_project_summary(self, project_id: str, sections: dict | None = None, signed_as: str | None = None,
+                               state: str | None = None, title: str | None = None, goal: str | None = None) -> str:
         signed_as = self._sign(signed_as)
-        cleaned = _clean_summary_sections(sections, self.owner_name)
-        changed = [name for name in SUMMARY_SECTIONS if name in cleaned]
+        fields = {k: v for k, v in (("state", state), ("title", title), ("goal", goal)) if v is not None}
+        cleaned = {} if sections in (None, {}) and fields else _clean_summary_sections(sections, self.owner_name)
+        changed = [name for name in BODY_ORDER if name in cleaned] + list(fields)
+        if state is not None and state not in STATES:
+            raise BaseError(tr("agent.140", v0='、'.join(STATES)))
+        for key, limit in (("title", 80), ("goal", 200)):
+            if key in fields:
+                if not isinstance(fields[key], str):
+                    raise BaseError(tr("lesson.bad_type", field=key))
+                fields[key] = _check_text(tr("edit." + key), fields[key], limit=limit, single_line=True)
         with self._write():
             viewer, _, visible = self._writer(operation="update_project_summary")
+            if viewer.assigned and (fields or cleaned.keys() - set(SUMMARY_SECTIONS)):
+                raise Forbidden(tr("edit.full_required"))
             project = self._find(visible, "project", project_id)
             if not project:
                 raise BaseError(tr("agent.144", v0=project_id, v1=tr(NOT_FOUND)))
             self._granted_project(viewer, project)
             today = self._today()
-            meta = dict(project.meta)
+            meta = project.meta | fields
             if "现状" in cleaned:
                 meta["summary_as_of"] = today
             meta["updated"] = today
-            body = _apply_summary_sections(project.body, cleaned, today)
+            body = _apply_summary_sections(project.body, cleaned, today) if cleaned else project.body
+            if title is not None:
+                body, count = re.subn(r"(?m)^# [^\n]*", lambda _: "# " + fields["title"], body, count=1)
+                if not count:
+                    body = "# " + fields["title"] + "\n\n" + body
             content = _dump_front(meta) + "\n" + body.lstrip("\n")
             if content == project.raw:
                 return tr("agent.031")
@@ -663,7 +676,21 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
     def record_decision(self, title: str, decision: str, reason: str, decided_by: str,
                         project_id: str | None = None, sensitivity: str = "internal",
                         visible_to: list[str] | None = None, access_note: str | None = None,
-                        signed_as: str | None = None) -> str:
+                        signed_as: str | None = None, source: str | None = None, expires: str | None = None,
+                        pending: bool = False, supersedes: list[str] | None = None,
+                        happened: str | None = None) -> str:
+        r = self._record_decision_commit(title, decision, reason, decided_by, project_id, sensitivity, visible_to,
+                                         access_note, signed_as, source, expires, pending, supersedes, happened)
+        tip = tr("decision_summary_tip", project=r["project"]) if r["project"] else ""
+        return tr("agent.064", v0=r["id"], v1=r["path"], v2=r["commit"]) + tip
+
+    def _record_decision_commit(self, title, decision, reason, decided_by, project_id=None, sensitivity="internal",
+                                visible_to=None, access_note=None, signed_as=None, source=None, expires=None,
+                                pending=False, supersedes=None, happened=None, origin_id=None) -> dict:
+        """返回 {id, path, commit, skipped, project}。origin_id 已在某条决定上就跳过（重放安全），只在决定之间查。"""
+        source, expires, happened = clean_source(source), clean_expires(expires), clean_expires(happened)
+        origin_id = _check_text(tr("lesson.field.origin_id"), origin_id, required=False, limit=120, single_line=True) or None
+        pending, supersedes = clean_flag(pending, "pending"), clean_supersedes(supersedes)
         signed_as = self._sign(signed_as)
         title = _check_text(tr("agent.077"), title, limit=80, single_line=True)
         decision = soften_headings(_check_text(tr("agent.106"), decision))
@@ -702,6 +729,14 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
                 allowed = set(project.meta.get("visible_to") or [])
                 if sensitivity != "restricted" or not set(names).issubset(allowed):
                     raise BaseError(tr("agent.156"))
+            old = next((d for d in docs if d.kind == "decision" and origin_id
+                        and d.meta.get("origin_id") == origin_id), None)
+            if old is not None:
+                if not viewer.can_see(old):
+                    raise NotFound(tr("lesson.not_found"))
+                self._record_project(viewer, visible, old.meta.get("project"))
+                return {"id": old.id, "path": old.rel, "commit": None, "skipped": True,
+                        "project": old.meta.get("project")}
             today = self._today().isoformat()
             stamp = f"{today}-{viewer.key}-{self._now():%H%M%S}"
             doc_id, n = stamp, 2
@@ -718,12 +753,17 @@ class CompanyBase(TodoMixin, AppMixin, SkillMixin, ManageMixin, HomeMixin, Token
             if access_note:
                 meta["access_note"] = access_note
             meta["updated"] = today
+            for field, value in (("happened", happened), ("source", source), ("expires", expires),
+                                 ("pending", pending), ("supersedes", supersedes), ("origin_id", origin_id)):
+                if value:
+                    meta[field] = value
+            files = self._supersede_files("decision", supersedes, doc_id, viewer, visible, signed_as)
             content = (_dump_front(meta) + f"\n# {title}\n\n## 决定\n\n{decision}\n\n## 理由\n\n{reason}\n")
             rel = f"decisions/{doc_id}.md"
-            commit = gitops.write_and_commit(self.root, {rel: content}, f"决定：{title}",
+            files[rel] = content
+            commit = gitops.write_and_commit(self.root, files, f"决定：{title}",
                                              "record_decision", viewer.key, signed_as)
-        tip = tr("decision_summary_tip", project=project.id) if project else ""
-        return tr("agent.064", v0=doc_id, v1=rel, v2=commit) + tip
+        return {"id": doc_id, "path": rel, "commit": commit, "skipped": False, "project": project.id if project else None}
 
     def handover_role(self, project_id: str, role: str, who: str, reason: str,
                       owner_approval: str | None = None, signed_as: str | None = None) -> str:
@@ -884,4 +924,6 @@ def _how_to_open(d: Doc) -> str:
         return f" → `get_handbook('{d.id}')`"
     if d.kind == "decision":
         return " → `list_decisions()`"
+    if d.kind == "lesson":
+        return " → `list_lessons()`"
     return ""

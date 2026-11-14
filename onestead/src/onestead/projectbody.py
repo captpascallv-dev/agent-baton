@@ -1,4 +1,4 @@
-"""项目正文的分节：解析、按固定顺序插入、改写现状、下一步、分工、入口。"""
+"""项目正文的分节：解析、按固定顺序插入和改写六节，写权限由入口判断。"""
 
 from __future__ import annotations
 
@@ -15,14 +15,14 @@ BODY_ORDER = ("目标", "现状", "下一步", "分工", "入口", "边界与注
 
 
 def _clean_summary_sections(sections, owner_name: str) -> dict[str, str]:
-    """只收四节。多出来的节名整次拒绝，一节里的二级标题和像密钥的内容也拒绝。"""
+    """校验六节；目标和边界的写权限在调用入口统一判断。"""
     if not isinstance(sections, dict) or not sections:
         raise BaseError(tr("agent.349"))
     bad = []
     normalized = []
     for key, value in sections.items():
         name = str(key).strip()
-        if name not in SUMMARY_SECTIONS:
+        if name not in BODY_ORDER:
             bad.append(name or str(key))
         else:
             normalized.append((name, value))
@@ -92,7 +92,7 @@ def _refresh_as_of(heading: str, today: dt.date) -> str:
 
 def _apply_summary_sections(body: str, cleaned: dict[str, str], today: dt.date) -> str:
     preamble, sections = _parse_sections(body.replace("\r\n", "\n"))
-    for name in SUMMARY_SECTIONS:
+    for name in BODY_ORDER:
         if name not in cleaned:
             continue
         found = next((section for section in sections if section["name"] == name), None)

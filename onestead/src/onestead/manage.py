@@ -1,7 +1,7 @@
-"""网页上以 主人 的名义做的管理：改资料、项目、决定、成员，新建资料和成员，批或不批关键角色的接任申请。
+"""网页管理，以及全读伙伴的手册和资产编辑。
 
-只有网页界面（is_owner 的读者）能用，MCP 和命令行用不了：这些改动要么只该 主人 做（敏感级别、批准），
-要么是他亲手改文字。每次保存都是一次以 主人 为作者的提交，动态里看得到、能撤回。
+成员、权限和批准等管理仍只给网页上的主人；update_page 也给全读且能写的身份使用。
+每次保存以实际写入者为作者提交，动态里看得到、能撤回。
 打开编辑时带一个版本号（文件内容的指纹），保存时文件已经被别人改过就不覆盖，请他重新打开。
 """
 
@@ -15,7 +15,7 @@ import hashlib
 import re
 
 from . import feishu, gitops, skillscan, skills, tokens
-from .store import LEVELS, BaseError, Doc, check_meta, clean_project_paths, is_archived, member_keys
+from .store import LEVELS, BaseError, Doc, Forbidden, check_meta, clean_project_paths, is_archived, member_keys
 from .handover import pending_handovers
 from .textutil import _as_date, _check_text, _dump_front, _strip_title
 
@@ -129,7 +129,68 @@ def _clean_level(changes: dict, keys: set[str]) -> dict:
 
 
 class ManageMixin:
-    """CompanyBase 的管理部分（只给网页上的 主人 用）。"""
+    """CompanyBase 的管理部分；update_page 另向全读写入者开放。"""
+
+    def update_page(self, kind, page_id, body, title=None, signed_as=None):
+        result = self._update_page_commit(kind, page_id, body, title, signed_as)
+        return tr("edit.page_saved", commit=result["commit"]) if result["commit"] else tr("agent.031")
+
+    def _update_page_commit(self, kind, page_id, body, title=None, signed_as=None):
+        if kind not in ("handbook", "asset"):
+            raise BaseError(tr("edit.bad_kind"))
+        if not isinstance(page_id, str) or not ID_RE.fullmatch(page_id):
+            raise BaseError(tr("edit.bad_id"))
+        if not isinstance(body, str) or title is not None and not isinstance(title, str):
+            raise BaseError(tr("lesson.bad_type", field="body/title"))
+        body = _check_text(tr("edit.body"), body, required=False, limit=MAX_BODY)
+        signed_as = self._sign(signed_as)
+        with self._write():
+            viewer, _, visible = self._writer()
+            if viewer.assigned:
+                raise Forbidden(tr("edit.full_required"))
+            rel = f"{'handbook' if kind == 'handbook' else 'assets'}/{page_id}.md"
+            doc = next((d for d in visible if d.rel == rel), None)
+            if (doc and doc.problem) or (doc is None and (self.root / rel).exists()):
+                raise BaseError(tr("edit.invalid_page"))
+            if title is None and doc is None:
+                raise BaseError(tr("edit.title_required"))
+            title = _check_text(tr("edit.title"), title if title is not None else doc.title, limit=80, single_line=True)
+            meta = dict(doc.meta) if doc else {"id": page_id, "type": kind, "sensitivity": "internal"}
+            meta |= {"title": title, "updated": self._today()}
+            content = _dump_front(meta) + f"\n# {title}\n" + (f"\n{body}\n" if body else "")
+            commit = None
+            if doc is None or content != doc.raw:
+                noun, action = ("手册" if kind == "handbook" else "资产"), ("改" if doc else "新建")
+                commit = gitops.write_and_commit(self.root, {rel: content}, f"{noun}：{action}「{title}」",
+                                                "update_page", viewer.key, signed_as)
+        return {"id": page_id, "path": rel, "commit": commit}
+
+    def _set_owner_name_commit(self, name, signed_as=None):
+        """改主人的显示名（主人成员记录的 title）。主人自己、或归属主人的全读能写伙伴可改；名字没变不提交。"""
+        if not isinstance(name, str):
+            raise BaseError(tr("lesson.bad_type", field="name"))
+        name = _check_text(tr("owner_name.label"), name, limit=80, single_line=True)
+        signed_as = self._sign(signed_as)
+        key = config.owner_key()
+        with self._write():
+            viewer, docs, _ = self._writer()
+            if not viewer.is_owner and (viewer.assigned or viewer.member.meta.get("kind") != "agent"
+                                        or viewer.workspace_owner != key):
+                raise Forbidden(tr("owner_name.forbidden", owner=self.owner_name))
+            member = member_keys(docs).get(key)
+            if member is None or member.problem:
+                raise BaseError(tr("owner_name.no_member"))
+            old = str(member.meta.get("title") or "")
+            body = re.sub(r"(?m)^# [^\n]*", lambda _: "# " + name, member.body, count=1)
+            if old:
+                for template in ("{}（`{}`）", "{} (`{}`)"):
+                    body = body.replace(template.format(old, key), template.format(name, key), 1)
+            content = _dump_front(dict(member.meta) | {"title": name}) + "\n" + body.lstrip("\n")
+            commit = None
+            if content != member.raw:
+                commit = gitops.write_and_commit(self.root, {member.rel: content}, f"成员：主人显示名改为「{name}」",
+                                                 "set_owner_name", viewer.key, signed_as)
+        return {"key": key, "name": name, "commit": commit}
 
     def _owner(self):
         viewer, docs, visible = self._writer()
@@ -166,6 +227,8 @@ class ManageMixin:
     def save_doc(self, rel: str, version: str, changes: dict, body: str | None) -> dict:
         if not isinstance(changes, dict):
             raise BaseError(tr("agent.306"))
+        if changes.keys() & {"lessons_reviewed_at", "lessons_notified_at"}:
+            raise BaseError(tr("digest.timestamps_managed"))
         with self._write():
             viewer, docs, visible = self._owner()
             d = next((x for x in visible if x.rel == rel), None)

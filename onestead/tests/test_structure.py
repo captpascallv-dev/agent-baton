@@ -5,9 +5,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1] / "src" / "onestead"
 
-# 进程入口把网页挂到远程服务上。pyproject 把 company-base-remote 钉在 onestead.server，
-# online 也从 server.remote_app 拿应用，所以只允许这一处。业务模块不能再引用网页层。
-ALLOWED = {("server.py", "web.host")}
+# 只允许进程入口引用网页层，业务模块不能引用：
+# - server.py：pyproject 把 company-base-remote 钉在 onestead.server，online 也从 server.remote_app 拿应用；
+# - cli.py：`onestead web` 子命令只在走到这个分支时才导入启动器，随装工件只凭 onestead 一个程序就能起本机网页。
+ALLOWED = {("server.py", "web.host"), ("cli.py", "web.launcher")}
 
 
 def _imported_web(node: ast.AST) -> list[str]:

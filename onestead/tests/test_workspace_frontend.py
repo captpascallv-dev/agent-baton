@@ -30,10 +30,11 @@ class N {
   get innerHTML() { return this.html || ''; }
   setAttribute(k, v) { this.attrs[k] = String(v); if (k === 'hidden') this.hidden = true; if (k === 'value') this._value = String(v); if (k.startsWith('data-')) this.dataset[k.slice(5)] = String(v); }
   getAttribute(k) { return this.attrs[k] ?? null; }
+  removeAttribute(k) { delete this.attrs[k]; }
   get value() { return this.tag === 'select' ? this._value || this.children.find(x => x.attrs.selected !== undefined)?.value || this.children[0]?.value || '' : this._value; }
   set value(v) { this._value = v; }
   get childElementCount() { return this.children.length; }
-  get classList() { const el = this; return { toggle(k, on) { const c = new Set((el.attrs.class || '').split(' ')); if (on) c.add(k); else c.delete(k); el.attrs.class = [...c].join(' '); }, add(k) { this.toggle(k, true); }, remove(k) { this.toggle(k, false); } }; }
+  get classList() { const el = this; return { toggle(k, on) { const c = new Set((el.attrs.class || '').split(' ')); if (on) c.add(k); else c.delete(k); el.attrs.class = [...c].join(' '); }, add(k) { this.toggle(k, true); }, remove(k) { this.toggle(k, false); }, contains(k) { return (el.attrs.class || '').split(' ').includes(k); } }; }
   addEventListener(k, fn) { (this.events[k] ||= []).push(fn); }
   async fire(k, more = {}) { for (const fn of this.events[k] || []) await fn({ target: this, currentTarget: this, preventDefault() {}, stopPropagation() {}, ...more }); }
   dispatchEvent(e) { this.fire(e.type); }
@@ -49,7 +50,7 @@ document.createElement = tag => new N(tag); document.createElementNS = (_, tag) 
 const ids = {}; for (const id of ['page', 'main', 'layer', 'open-search', 'logout', 'me-name', 'me-initial', 'me-role', 'nav-pending']) { ids[id] = new N('div'); document.body.append(ids[id]); }
 document.getElementById = id => ids[id];
 const nav = new N('nav'); nav.setAttribute('class', 'nav'); document.body.append(nav);
-for (const route of ['home', 'activity', 'todos', 'projects', 'apps', 'agents', 'skills', 'docs', 'decisions', 'members', 'approvals']) { const a = new N('a'); a.setAttribute('data-route', route); nav.append(a); }
+for (const route of ['home', 'activity', 'todos', 'projects', 'apps', 'agents', 'skills', 'docs', 'decisions', 'members', 'lessons', 'approvals']) { const a = new N('a'); a.setAttribute('data-route', route); nav.append(a); }
 const window = new N('window'), location = { hash: '#/', assign(url) { this.assigned = url; } };
 const timers = new Map(); let timerId = 0;
 const context = vm.createContext({ Node: N, document, window, location, Intl, Date, URLSearchParams, AbortController, Event, ResizeObserver: class { observe() {} },
@@ -61,12 +62,72 @@ const context = vm.createContext({ Node: N, document, window, location, Intl, Da
 function response(data, status = 200) { return { ok: status < 400, status, headers: { get: () => 'remote' }, async json() { return structuredClone(data); } }; }
 context.response = response;
 context.fetch = async (path, opt) => { context.calls.push([path, opt]); if (!(path in context.payloads)) throw Error('没有接口夹具：' + path); return response(context.payloads[path]); };
-for (const name of ['i18n-zh.js', 'i18n-en.js', 'i18n.js', 'values.js', 'app.js', 'todos.js', 'apps.js', 'skills.js', 'manage.js']) vm.runInContext(fs.readFileSync(STATIC + '/' + name, 'utf8'), context, { filename: name });
+for (const name of ['i18n-zh.js', 'i18n-en.js', 'i18n.js', 'values.js', 'app.js', 'todos.js', 'apps.js', 'skills.js', 'manage.js', 'lessons.js']) vm.runInContext(fs.readFileSync(STATIC + '/' + name, 'utf8'), context, { filename: name });
 context.findButton = (node, text) => node.querySelectorAll('button').find(x => x.textContent === text);
 (async () => { await vm.runInContext('(async () => {' + CASE + '})()', context); })().catch(e => { console.error(e); process.exitCode = 1; });
 '''
 
 CASES = {
+    "经验过目按钮分批与双语": r'''
+payloads = LOCAL; await loadMe(); location.hash = '#/lessons';
+const pending = {id:'pending', record_id:'lessons/pending', kind:'lesson', title:'Pending example', project:'alpha', project_title:'Project A', conclusion:'Verify before acting', source:null, state:'pending', category:'pending', waiting_days:3, number:1};
+const current = {id:'current', record_id:'lessons/current', kind:'lesson', title:'Current example', project:null, project_title:'Company-wide', conclusion:'Read the outcome', source:'owner', state:'active', html:'<p>Full text</p>'};
+let reviewed = false, retired = false, confirmed = false;
+const previousFetch = fetch;
+fetch = async (path, opt) => {
+  if (path === '/api/lessons/review') {
+    calls.push([path,opt]); const body = JSON.parse(opt.body);
+    if (body.confirm) confirmed = true;
+    if (body.retire) retired = true;
+    if (body.done) reviewed = true;
+    return response({commit:'abc1234'});
+  }
+  if (path.startsWith('/api/lessons?')) {
+    calls.push([path,opt]);
+    const row = {...pending, state:confirmed?'active':'pending', category:confirmed?'inferred':'pending'};
+    const inactive = path.includes('include_inactive=1');
+    return response({digest:{since:'2026-10-03 23:30',as_of:'2026-10-10 23:30',judgments: reviewed || retired ? [] : [row],judgment_count:retired?0:1,batch:LD.batch,batches:2,remaining_batches:LD.batch===1?1:0,maintenance_count:4},items:[current,...(retired && inactive?[{...pending,state:'retired',html:'<p>Old text</p>'}]:[])]});
+  }
+  return previousFetch(path,opt);
+};
+await route(); const page = document.getElementById('page');
+assert.ok(page.textContent.includes('本期摘要')); assert.ok(page.textContent.includes('全部现行经验'));
+assert.ok(page.textContent.includes('已等 3 天')); assert.ok(page.textContent.includes('出处没填'));
+assert.ok(findButton(page,'点头')); assert.ok(findButton(page,'划掉')); assert.ok(findButton(page,'撤下'));
+await findButton(page,'下一批').fire('click'); assert.equal(LD.batch,2); assert.ok(page.textContent.includes('还有 0 批'));
+await findButton(page,'上一批').fire('click'); assert.equal(LD.batch,1);
+await findButton(page,'点头').fire('click'); assert.equal(confirmed,true); assert.equal(findButton(page,'点头') || null,null);
+await findButton(page,'划掉').fire('click'); layer().querySelector('textarea').value='No longer applies';
+await findButton(layer(),'划掉').fire('click'); assert.equal(retired,true);
+assert.deepEqual(JSON.parse(calls.filter(x=>x[0]==='/api/lessons/review').at(-1)[1].body),{retire:[{id:'lessons/pending',note:'No longer applies'}]});
+const toggle = page.querySelector('input[type=checkbox]'); toggle.checked=true; await toggle.fire('change');
+assert.ok(page.textContent.includes('已撤下'));
+await findButton(page,'看完了').fire('click'); assert.equal(reviewed,true);
+await selectLanguage('en'); assert.ok(page.textContent.includes('This period’s digest')); assert.ok(findButton(page,'Finished reviewing'));
+assert.ok(document.querySelectorAll('.nav a[data-route]').find(a=>a.dataset.route==='lessons').hidden===false);
+clearWorkspace(); assert.equal(LD.batch,1); assert.equal(LD.inactive,false);
+''',
+    "经验与决定状态双语及跳转": r'''
+payloads = LOCAL; await loadMe();
+payloads['/api/project/alpha'].lessons_html = '<p>Current rule example</p>';
+await showProject('alpha');
+assert.ok(layer().textContent.includes('现行经验'));
+assert.ok(layer().textContent.includes('Current rule example'));
+closeLayer();
+const old = {rel:'decisions/old.md',title:'Old rule',date:'2026-11-13',record_state:'superseded',superseded_by:'new',sensitivity:'internal'};
+payloads['/api/decisions'].items = [old, {...old,rel:'decisions/pending.md',title:'Pending rule',record_state:'pending',superseded_by:null}];
+payloads['/api/doc?rel=decisions%2Fnew.md'] = {rel:'decisions/new.md',title:'New rule',kind:'决定',facts:[],html:'<p>New text</p>',record_state:'active'};
+await renderDecisions();
+assert.ok(document.getElementById('page').textContent.includes('已被取代'));
+assert.ok(document.getElementById('page').textContent.includes('待确认（未生效）'));
+await selectLanguage('en');
+await renderDecisions();
+assert.ok(document.getElementById('page').textContent.includes('Superseded'));
+assert.ok(document.getElementById('page').textContent.includes('Pending confirmation (not effective)'));
+await findButton(document.getElementById('page'), 'View replacement: new').fire('click', {stopPropagation(){}});
+assert.ok(layer().textContent.includes('New rule'));
+assert.ok(layer().textContent.includes('Current'));
+''',
     "登记置顶与知晓按钮双语": r'''
 payloads = LOCAL; await loadMe();
 const today = payloads['/api/todos'].today;

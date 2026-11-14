@@ -35,6 +35,8 @@ ROUTE_POLICY = {
     ("POST", "/api/projects"): (True, False),
     ("GET", "/api/docs"): (True, True),
     ("GET", "/api/decisions"): (True, True),
+    ("GET", "/api/lessons"): (True, False),
+    ("POST", "/api/lessons/review"): (True, False),
     ("GET", "/api/members"): (True, True),
     ("POST", "/api/members/{key}/archive"): (True, False),
     ("POST", "/api/members/{key}/restore"): (True, False),

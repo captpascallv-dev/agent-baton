@@ -8,7 +8,8 @@ from __future__ import annotations
 from .. import config, feishu, sites
 
 from ..redact import documents, html, text_fields
-from ..store import make_viewer
+from ..store import make_viewer, now_taipei
+from ..records import web_state
 from . import present, views
 from .policy import require_local_owner
 from .refs import colleague_author, local_who
@@ -59,7 +60,10 @@ class LocalProjection:
         return views.project_app_cards(visible, project_id)
 
     def doc(self, doc, viewer, docs):
-        return views.doc_view(doc)
+        row = views.doc_view(doc)
+        if doc.kind in ("lesson", "decision"):
+            row.update(web_state(doc, now_taipei().date(), viewer.visible(docs)))
+        return row
 
     def doc_list(self, visible):
         return views.doc_list(visible)
