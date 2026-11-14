@@ -61,12 +61,32 @@ function s(tag, attrs, ...kids) {  // SVG 元素
   return el;
 }
 
+// 点下去要等后台的操作（处理函数返回 Promise）：立刻进入“处理中”，办完自动恢复；处理中再点不算数，
+// 也不冒泡到外层（比如待办行会打开编辑）。样式在 app.css 的 .busy：先换光标，稍等才变淡、转圈，快的不闪。
+function busyHandler(fn) {
+  return function (e) {
+    const el = e.currentTarget;
+    if (el.classList.contains("busy")) { e.preventDefault(); e.stopPropagation(); return; }
+    const result = fn.call(this, e);
+    if (result && typeof result.then === "function") {
+      // 勾选框、下拉框的 change 已经改了界面上的值，挡不回去；保存期间直接锁住，免得界面和存下的不一致
+      const lock = ["INPUT", "SELECT", "TEXTAREA"].includes(el.tagName) && !el.disabled;
+      el.classList.add("busy");
+      el.setAttribute("aria-busy", "true");
+      if (lock) el.disabled = true;
+      const done = () => { el.classList.remove("busy"); el.removeAttribute("aria-busy"); if (lock) el.disabled = false; };
+      result.then(done, done);
+    }
+    return result;
+  };
+}
+
 function setAttrs(el, attrs) {
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v == null || v === false) continue;
     if (k === "class") el.setAttribute("class", v);
     else if (k === "text") el.textContent = v;
-    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), k === "onclick" || k === "onchange" ? busyHandler(v) : v);
     else el.setAttribute(k, v === true ? "" : v);
   }
 }
@@ -354,7 +374,7 @@ function confirmRevert(c, zone) {
     h("p", { text: uiText("app.122") }),
     reason, msg,
     h("div", { class: "btns" }, h("button", { class: "btn", type: "button", onclick: () => box.remove() }, uiText("app.121")), go));
-  go.addEventListener("click", async () => {
+  go.addEventListener("click", busyHandler(async () => {
     go.disabled = true;
     try {
       const r = await api("/api/revert", { sha: c.sha, reason: reason.value });
@@ -370,7 +390,7 @@ function confirmRevert(c, zone) {
       if (e.message !== "401") put(msg, h("p", { class: "muted", text: e.message }));
     }
     go.disabled = false;
-  });
+  }));
   zone.querySelector(".confirm")?.remove();
   zone.append(box);
   reason.focus();
@@ -407,12 +427,25 @@ async function showProject(pid) {
         a.listed === false ? h("span", { class: "pill red", text: uiText("app.110") }) : null)))] : null,
     p.authority ? [h("div", { class: "block-title", text: uiText("app.109") }),
       h("p", { class: "note" }, p.authority.label || "", p.authority.path ? h("code", { text: ` ${p.authority.path}` }) : null)] : null,
+    p.lessons_html ? [h("div", { class: "block-title", text: uiText("lesson.current") }), trusted(p.lessons_html),
+      h("p", { class: "note faint", text: uiText("lesson.see_all") })] : null,
     h("div", { class: "block-title", text: p.status_total ? uiText("app.108", [p.status_total]) : uiText("app.107") }),
     p.status.length ? h("div", {}, p.status.map(e => h("div", { class: "entry" },
       h("div", { class: "head", text: e.head }), trusted(e.html)))) : h("p", { class: "note faint", text: uiText("app.106") }),
     h("div", { class: "block-title", text: uiText("app.105") }),
     p.newer_status ? h("p", { class: "note faint", text: uiText("app.104", [p.newer_status]) }) : null,
     trusted(p.body_html));
+}
+
+function recordStateView(d) {
+  if (!d.record_state) return null;
+  const kind = d.rel.startsWith("lessons/") ? "lessons" : "decisions";
+  const stateKeys = {active:"lesson.state.active", pending:"lesson.state.pending", superseded:"lesson.state.superseded", retired:"lesson.state.retired", expired:"lesson.state.expired"};
+  return h("div", { class: "meta-line" },
+    h("span", { class: "pill", text: uiText(stateKeys[d.record_state]) }),
+    d.superseded_by ? h("button", { class: "btn", type: "button", onclick: e => {
+      e.stopPropagation(); return showDoc(`${kind}/${d.superseded_by}.md`);
+    }, text: uiText("lesson.replacement", [d.superseded_by]) }) : null);
 }
 
 async function showDoc(rel) {
@@ -423,6 +456,7 @@ async function showDoc(rel) {
   if (ticket !== layerVersion) return;
   drawer(uiLabel(d.kind),
     h("div", { class: "drawer-title" }, h("h2", { text: d.title }), editButton(d.rel)),
+    recordStateView(d),
     d.facts.length ? h("dl", { class: "kv", style: null }, d.facts.map(f => [h("dt", { text: uiLabel(f.k) }), h("dd", { text: f.k === I18N_ZH["manage.059"] ? uiLabel(f.v) : f.v })])) : null,
     reminders(d),
     h("div", { class: "block-title", text: uiText("app.102") }), trusted(d.html),
@@ -495,6 +529,7 @@ function openSearch(query = "") {
     }, 140);
   });
   input.addEventListener("keydown", e => {
+    if (e.isComposing) return;
     if (e.key === "ArrowDown" && hits.length) { on = (on + 1) % hits.length; draw(); e.preventDefault(); }
     if (e.key === "ArrowUp" && hits.length) { on = (on - 1 + hits.length) % hits.length; draw(); e.preventDefault(); }
     if (e.key === "Enter" && hits[on]) openHit(hits[on]);
@@ -826,6 +861,7 @@ async function route() {
   else if (page === "projects") await renderProjects();
   else if (page === "docs") await renderDocs();
   else if (page === "decisions") await renderDecisions();
+  else if (page === "lessons") await renderLessons();
   else if (page === "members") await renderMembers();
   else if (page === "approvals") await renderApprovals();
   else await renderHome();
@@ -865,11 +901,11 @@ async function loadMe() {
 }
 
 document.getElementById("open-search").addEventListener("click", () => openSearch());
-document.getElementById("logout").addEventListener("click", async e => {
+document.getElementById("logout").addEventListener("click", busyHandler(async e => {
   e.target.disabled = true;
   try { await api("/auth/logout", {}); expireSession(true); }
   catch (error) { if (error.message !== "401") toast(error.message); e.target.disabled = false; }
-});
+}));
 document.addEventListener("keydown", e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openSearch(); }
   if (e.key === "Escape" && layer().childElementCount) closeLayer();

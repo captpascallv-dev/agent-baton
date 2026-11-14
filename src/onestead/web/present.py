@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ..records import web_state
+from ..store import now_taipei
 from ..i18n import text as tr
 
 import datetime as dt
@@ -106,6 +108,8 @@ def doc(d: Doc, viewer: Viewer, docs) -> dict:
                  {"k": "谁记的", "v": author(d.meta.get("recorded_by"), viewer, docs)}]
     row = text_fields({"rel": d.rel, "kind": views.KIND_LABEL.get(d.kind, d.kind), "title": d.title,
                        "facts": facts, "sensitivity": d.sensitivity, "access_note": d.meta.get("access_note")})
+    if d.kind in ("lesson", "decision"):
+        row.update(web_state(d, now_taipei().date(), viewer.visible(docs)))
     row["html"] = html(_strip_title(d.body))
     return row
 
@@ -122,7 +126,8 @@ def decisions(visible, viewer, docs, by_id) -> list[dict]:
                                 "decided_by": author(d.meta.get("decided_by"), viewer, docs),
                                 "recorded_by": author(d.meta.get("recorded_by"), viewer, docs),
                                 "project": project_ref(d.meta.get("project"), by_id),
-                                "sensitivity": d.sensitivity, "access_note": d.meta.get("access_note")})
+                                "sensitivity": d.sensitivity, "access_note": d.meta.get("access_note"),
+                                **web_state(d, now_taipei().date(), visible)})
                    for d in visible if d.kind == "decision"], key=lambda r: r["date"], reverse=True)
 
 

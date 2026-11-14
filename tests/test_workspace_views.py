@@ -30,6 +30,30 @@ PATHS = ["C:" + r"\Users\PrivateMark\file.md", "C:/Users/PrivateMark/file.md", r
 SECRET = "cbx_" + "SeCrEtMaRk" * 4
 
 
+@pytest.mark.parametrize("remote", [False, True])
+def test_project_lessons_and_decision_lifecycle_views(repo, ext, workspace, client, remote):
+    base = ext("claude")
+    lesson = base._record_lesson_commit(lesson="开工先查结论", project_id="alpha", how="查现行经验", ref="C:/PrivateMark/detail.md")
+    base.record_lesson("未确认的正文", title="未确认标题", project_id="alpha", pending=True)
+    base.record_decision("旧选择", "甲", "先试", OWNER_NAME, project_id="alpha")
+    old = next(d for d in Store(repo).load() if d.kind == "decision" and d.title == "旧选择")
+    base.record_decision("新选择", "乙", "更好", OWNER_NAME, project_id="alpha", supersedes=[old.id])
+    c = workspace if remote else client
+    if remote:
+        assert login(c)[0].status_code == 303
+    project = c.get("/api/project/alpha").json()
+    assert "开工先查结论" in project["lessons_html"] and "另有 1 条待确认" in project["lessons_html"]
+    assert "未确认的正文" not in project["lessons_html"] and "未确认标题" not in project["lessons_html"]
+    lesson_doc = c.get("/api/doc", params={"rel": lesson["path"]}).json()
+    assert lesson_doc["record_state"] == "active" and "开工先查结论" in lesson_doc["html"]
+    hits = c.get("/api/search", params={"q": "开工先查结论"}).json()["hits"]
+    assert any(h["rel"] == lesson["path"] for h in hits)
+    old_row = next(r for r in c.get("/api/decisions").json()["items"] if r["rel"] == old.rel)
+    assert old_row["record_state"] == "superseded" and old_row["superseded_by"]
+    if remote:
+        assert "PrivateMark" not in project["lessons_html"]
+
+
 @pytest.mark.parametrize("path", PATHS)
 @pytest.mark.parametrize("template", ["前 {p} 后", "[链接]({p})", "```text\n{p}\n```", '<a href="{p}">链接</a>'])
 def test_mask_local_every_path_form(path, template):
@@ -69,6 +93,46 @@ def test_remote_url_allows_public_http_without_probe(url):
 READS = ["/api/home", "/api/home?draft=1", "/api/activity", "/api/project/alpha", "/api/doc?rel=handbook/company.md",
          "/api/search?q=公司", "/api/todos", "/api/apps", "/api/agents", "/api/projects", "/api/docs",
          "/api/decisions", "/api/members", "/api/skills", f"/api/skills/{SID}"]
+
+
+def test_owner_lesson_page_and_shared_review_path(client, repo):
+    from .support import WEB_POST_HEADERS
+    base = CompanyBase(repo, "claude")
+    first = base._record_lesson_commit(lesson="先核实再执行", title="待点头", pending=True, project_id="alpha")
+    second = base._record_lesson_commit(lesson="仅本期适用", title="待划掉", source="inferred")
+    base.record_lesson("共用结论", title="共用现行", source="owner")
+    base.record_lesson("项目结论", title="项目现行", source="owner", project_id="alpha")
+    base.record_lesson("原因" * 2000, title="超限", source="owner", why="须一直带出")
+    payload = client.get("/api/lessons").json()
+    assert payload["digest"]["judgment_count"] >= 2
+    assert payload["digest"]["maintenance_count"] > 0
+    assert "maintenance" not in payload["digest"] and "instructions" not in payload["digest"]
+    pending = payload["digest"]["judgments"][0]
+    assert pending["state"] == "pending" and pending["title"] == "待点头"
+    assert "lessons" in client.get("/api/me").json()["navigation"]
+    response = client.post("/api/lessons/review", headers=WEB_POST_HEADERS,
+                           json={"confirm": [first["id"]], "retire": [{"id": second["id"], "note": "本期不再适用"}]})
+    assert response.status_code == 200, response.text
+    assert response.json()["commit"] == git(repo, "rev-parse", "--short", "HEAD")
+    assert git(repo, "log", "-1", "--format=%an") == OWNER
+    page = client.get("/api/lessons").json()
+    assert not any(r.get("state") == "pending" for r in page["digest"]["judgments"])
+    assert second["id"] not in {r["id"] for r in page["items"]}
+    inactive = client.get("/api/lessons?include_inactive=1").json()
+    row = next(r for r in inactive["items"] if r["id"] == second["id"])
+    assert row["state"] == "retired"
+    assert client.post("/api/lessons/review", headers=WEB_POST_HEADERS, json={"done": True}).status_code == 200
+    human = next(d for d in Store(repo).load() if d.kind == "person" and d.id == OWNER)
+    assert isinstance(human.meta["lessons_reviewed_at"], str)
+    assert client.get("/api/lessons?batch=0").status_code == 400
+    assert client.get("/api/lessons?batch=no").status_code == 400
+
+
+def test_remote_has_no_lesson_owner_page(workspace):
+    assert login(workspace)[0].status_code == 303
+    assert "lessons" not in workspace.get("/api/me").json()["navigation"]
+    assert workspace.get("/api/lessons").status_code == 403
+    assert workspace.post("/api/lessons/review", headers=signed(workspace), json={"done": True}).status_code == 403
 
 
 @pytest.mark.parametrize("path", READS)

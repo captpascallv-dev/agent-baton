@@ -1,0 +1,45 @@
+name: Native Onestead bundle
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            target: windows-x64
+          - os: macos-15
+            target: macos-arm64
+          - os: macos-15-intel
+            target: macos-x64
+          - os: ubuntu-24.04
+            target: linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.13'
+      - name: Install pinned build dependencies
+        run: python -m pip install -r packaging/requirements-build.lock
+      - name: Build native onedir and licenses
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p ../bundle-records
+          python packaging/build.py --work ../bundle-work --output ../bundle-records 2>&1 | tee ../bundle-records/build.log
+      - name: Test relocated runtime with isolated PATH
+        shell: bash
+        run: |
+          set -o pipefail
+          python packaging/smoke.py --archive ../bundle-records/onestead-0.1.0-${{ matrix.target }}.zip --work ../bundle-smoke --record ../bundle-records/smoke.json 2>&1 | tee ../bundle-records/smoke.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: onestead-${{ matrix.target }}
+          path: ../bundle-records/

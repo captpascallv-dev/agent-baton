@@ -23,7 +23,7 @@ from .support import OWNER, PUBLIC_HOST
     lambda root: server.remote_app(str(root), 8765),
     lambda root: migrate_stage4.migration_plan(root),
     lambda root: online.main(),
-    lambda root: launcher.main(),
+    lambda root: launcher.main([]),
 ])
 def test_missing_owner_fails_before_start(entry, configured_data, monkeypatch):
     monkeypatch.delenv("COMPANY_BASE_OWNER")

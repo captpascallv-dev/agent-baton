@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .gitops import NO_WINDOW
+from .git_runtime import run_git
 from . import config
 from .store import TAIPEI
 
@@ -42,7 +44,7 @@ log = logging.getLogger("onestead.backup")
 
 
 def _git(*args, cwd: Path) -> str:
-    return subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True,
+    return run_git(args, root=cwd, check=True, capture_output=True,
                           text=True, encoding="utf-8", creationflags=NO_WINDOW).stdout.strip()
 
 
@@ -74,7 +76,7 @@ def _pack(repo: Path, label: str, staging: Path, verify_dir: Path) -> dict:
     _git("bundle", "create", str(bundle), f"refs/heads/{branch}", cwd=repo)
     _git("bundle", "verify", str(bundle), cwd=repo)
     clone = verify_dir / f"clone-{label}"
-    subprocess.run(["git", "clone", "--quiet", "--no-checkout", str(bundle), str(clone)], check=True,
+    run_git(["clone", "--quiet", "--no-checkout", str(bundle), str(clone)], check=True,
                    creationflags=NO_WINDOW)
     if _git("rev-parse", f"refs/remotes/origin/{branch}", cwd=clone) != sha:
         raise SystemExit(f"{label} 克隆出来的 {branch} 不是这个提交")
@@ -106,7 +108,8 @@ def _to_recycle_bin(path: Path) -> None:
             script = ("Add-Type -AssemblyName Microsoft.VisualBasic; "
                       "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory("
                       f"'{literal}', 'OnlyErrorDialogs', 'SendToRecycleBin')")
-            result = subprocess.run(["powershell", "-NoProfile", "-Command", script], check=False,
+            powershell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+            result = subprocess.run([str(powershell), "-NoProfile", "-Command", script], check=False,
                                     capture_output=True, creationflags=NO_WINDOW)
             if result.returncode == 0:
                 return
@@ -181,7 +184,8 @@ def rotate() -> dict:
            f"- 代码仓库：这次没有备份代码仓库，原因：{code_skipped}。要备份可配置 `source_repo`"
            "（或环境变量 `ONESTEAD_SOURCE_REPO`）指向源码 git 仓库。\n") +
         "- 只要文件：解压对应的 `*-source.zip`。\n"
-        "- 要完整历史：`git clone \"<本目录>/<对应的 .bundle>\" <新目录>`。\n"
+        "- 要完整历史：从 MANIFEST.json 的 repos.data.branch（代码用 repos.code.branch）取分支名，再运行 "
+        "`git clone -b \"<分支名>\" \"<本目录>/<对应的 .bundle>\" <新目录>`。\n"
         "- 恢复前先核对 `MANIFEST.json` 里各文件的 sha256。\n"
         "- 代码仓库恢复后，在源码目录用同一个 Python 环境重新运行 `python -m pip install -e .` 装依赖；备份不含虚拟环境。\n", encoding="utf-8")
 

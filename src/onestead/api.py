@@ -14,6 +14,10 @@ from .store import AuthRejected, BaseError, Busy, Conflict, Forbidden, NotFound,
 from .textutil import _as_date
 
 
+LESSON_FIELDS = {key: (str, type(None)) for key in (
+    "title", "how", "why", "project_id", "source", "expires", "happened", "ref", "access_note", "signed_as")}
+LESSON_FIELDS.update({"lesson": str, "pending": bool, "supersedes": (list, type(None)),
+                      "sensitivity": str, "visible_to": (list, type(None))})
 SKILL_FIELDS = {key: (str, type(None)) for key in (
     "title", "one_line", "maintainer", "upstream", "upstream_version", "home", "project", "notes")}
 SKILL_FIELDS["origin"] = str
@@ -21,7 +25,20 @@ TODO_FIELDS = {key: (str, type(None)) for key in (
     "due", "time", "repeat", "project", "notes")}
 TODO_FIELDS.update({key: str for key in ("title", "ask", *todos.ASK_FIELDS)})
 FIELDS = {
+    "lesson_digest": {"batch": int, "notify": bool, "signed_as": (str, type(None))},
+    "review_lessons": {"confirm": (list, type(None)), "retire": (list, type(None)), "done": bool, "signed_as": (str, type(None))},
+    "update_page": {"kind": str, "page_id": str, "body": str, "title": (str, type(None)), "signed_as": (str, type(None))},
+    "record_lesson": LESSON_FIELDS,
+    "list_lessons": {"project": (str, type(None)), "include_inactive": bool, "max_chars": int, "company_only": bool},
+    "record_decision": {**{key: (str, type(None)) for key in (
+        "project_id", "access_note", "source", "expires", "happened", "origin_id")},
+        "title": str, "decision": str, "reason": str, "decided_by": str, "sensitivity": str,
+        "visible_to": (list, type(None)), "pending": bool, "supersedes": (list, type(None)), "signed_as": str},
+    "import_lessons": {"items": list, "project": (str, type(None)), "signed_as": (str, type(None))},
+    "update_record": {"record_id": str, "changes": dict, "signed_as": (str, type(None))},
+    "history": {"target": str, "limit": int},
     "owner": {}, "list_projects": {}, "list_members": {},
+    "set_owner_name": {"name": str, "signed_as": (str, type(None))},
     "create_project": {"id": str, "title": str, "goal": str, "state": str, "paths": list, "signed_as": str},
     "append_status": {"project_id": str, "text": str, "signed_as": str},
     "list_skills": {"include_unlisted": bool},
@@ -32,6 +49,11 @@ FIELDS = {
     "update_todo": {"todo_id": str, "changes": dict, "signed_as": str},
 }
 REQUIRED = {
+    "update_page": {"kind", "page_id", "body"},
+    "record_lesson": {"lesson"}, "import_lessons": {"items"}, "history": {"target"},
+    "record_decision": {"title", "decision", "reason", "decided_by", "signed_as"},
+    "update_record": {"record_id", "changes"},
+    "set_owner_name": {"name"},
     "create_project": {"id", "title", "goal", "signed_as"},
     "append_status": {"project_id", "text", "signed_as"},
     "register_skill": {"id", "one_line", "signed_as"},
@@ -58,10 +80,14 @@ def _request(request) -> tuple[str, dict]:
         raise BaseError(tr("api.method"))
     params = request.get("params", {})
     _fields(params, FIELDS[method], REQUIRED.get(method, ()))
-    if method in REQUIRED and not params["signed_as"].strip():
+    if method in REQUIRED and "signed_as" in REQUIRED[method] and not params["signed_as"].strip():
         raise BaseError(tr("api.signature"))
-    if "paths" in params and not all(isinstance(path, str) for path in params["paths"]):
-        raise BaseError(tr("api.type", field="paths"))
+    for key in ("paths", "visible_to", "supersedes"):
+        if isinstance(params.get(key), list) and not all(isinstance(item, str) for item in params[key]):
+            raise BaseError(tr("api.type", field=key))
+    for key in ({"history": ("limit",), "list_lessons": ("max_chars",), "lesson_digest": ("batch",)}.get(method, ())):
+        if key in params and type(params[key]) is not int:
+            raise BaseError(tr("api.type", field=key))
     if method == "update_skill":
         _fields(params["changes"], {**SKILL_FIELDS, "listed": bool})
     if method == "update_todo":
@@ -83,8 +109,30 @@ def dispatch(base: CompanyBase, method: str, params: dict):
     viewer, _, visible = base._ctx()
     if not viewer.known or not viewer.valid:
         raise Forbidden(tr("api.identity"))
+    if method == "lesson_digest":
+        return base.lesson_digest_data(**params)
+    if method == "review_lessons":
+        return base._review_lessons_commit(**params)
+    if method == "update_page":
+        return base._update_page_commit(**params)
+    if method == "record_lesson":
+        return base._record_lesson_commit(**params)
+    if method == "list_lessons":
+        return base.lessons_data(**params)
+    if method == "import_lessons":
+        return base.import_lessons(**params)
+    if method == "history":
+        return base.history_data(**params)
+    if method == "record_decision":
+        result = base._record_decision_commit(**params)
+        return {key: result[key] for key in ("id", "path", "commit", "skipped")}
+    if method == "update_record":
+        doc, commit = base._update_record_commit(**params)
+        return {"id": doc.id, "path": doc.rel, "commit": commit}
     if method == "owner":
         return {"key": config.owner_key(), "name": owner_name(visible)}
+    if method == "set_owner_name":
+        return base._set_owner_name_commit(**params)
     if method == "list_projects":
         return [{"id": d.id, "title": d.title, "state": d.meta.get("state"), "goal": d.meta.get("goal"),
                  "roles": [{"role": r.get("role"), "who": r.get("who"), "since": _date(r.get("since")),

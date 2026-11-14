@@ -1,0 +1,43 @@
+# CPython 3.12.13; native build on each target. Complete build/runtime closure.
+altgraph==0.17.5
+annotated-types==0.8.0
+anyio==4.16.0
+attrs==26.1.0
+cffi==2.1.1
+click==8.5.1
+cryptography==50.0.2
+h11==0.16.0
+httpcore2==2.16.0
+httpx2==2.16.0
+idna==3.20
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+Markdown==3.11.3
+mcp==2.3.0
+mcp-types==2.3.0
+nh3==0.3.7
+opentelemetry-api==1.45.2
+packaging==26.3
+pefile==2024.8.26; sys_platform == 'win32'
+pycparser==3.12
+pydantic==2.14.3
+pydantic-core==2.50.4
+PyInstaller==6.22.3
+pyinstaller-hooks-contrib==2026.10
+PyJWT==2.15.1
+python-multipart==0.0.33
+pywin32==312; sys_platform == 'win32'
+pywin32-ctypes==0.2.3; sys_platform == 'win32'
+PyYAML==6.0.3
+referencing==0.37.0
+rpds-py==2026.9.1
+segno==1.6.6
+Send2Trash==2.2.0; sys_platform != 'win32'
+setuptools==84.2.1
+sse-starlette==3.7.0
+starlette==1.10.0
+truststore==0.10.5
+typing-extensions==4.16.0
+typing-inspection==0.4.5
+uvicorn==0.54.0
+macholib==1.16.4; sys_platform == 'darwin'

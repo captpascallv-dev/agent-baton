@@ -148,9 +148,81 @@ def build_server(root: str, agent_key: str | None, *, remote: bool = False, oaut
     def list_decisions(
         project_id: Annotated[str | None, Field(description=tr("agent.387"))] = None,
         limit: Annotated[int, Field(description=tr("agent.388"))] = 20,
+        include_inactive: Annotated[bool, Field(description=tr("lesson.include_inactive"))] = False,
     ) -> str:
         """决定记录，最新在前：日期、谁定的、定了什么、为什么。"""
-        return run("list_decisions", project_id, limit)
+        return run("list_decisions", project_id, limit, include_inactive)
+
+    @mcp.tool(annotations=WRITE, description=tr("lesson.tool.record", owner=owner_name))
+    def record_lesson(
+        lesson: Annotated[str, Field(description=tr("lesson.param.lesson"))],
+        title: Annotated[str | None, Field(description=tr("lesson.param.title"))] = None,
+        how: Annotated[str | None, Field(description=tr("lesson.param.how"))] = None,
+        why: Annotated[str | None, Field(description=tr("lesson.param.why"))] = None,
+        project_id: Annotated[str | None, Field(description=tr("lesson.param.project_id"))] = None,
+        source: Annotated[str | None, Field(description=tr("lesson.param.source"))] = None,
+        expires: Annotated[str | None, Field(description=tr("lesson.param.expires"))] = None,
+        pending: Annotated[bool, Field(description=tr("lesson.param.pending"))] = False,
+        supersedes: Annotated[list[str] | None, Field(description=tr("lesson.param.supersedes"))] = None,
+        ref: Annotated[str | None, Field(description=tr("lesson.param.ref"))] = None,
+        sensitivity: Annotated[str, Field(description=tr("agent.397"))] = "internal",
+        visible_to: Annotated[list[str] | None, Field(description=tr("agent.398"))] = None,
+        access_note: Annotated[str | None, Field(description=tr("agent.399"))] = None,
+        signed_as: Signed = None,
+        happened: Annotated[str | None, Field(description=tr("lesson.param.happened"))] = None,
+    ) -> str:
+        return run("record_lesson", lesson, title, how, why, project_id, source, expires, pending,
+                   supersedes, ref, sensitivity, visible_to, access_note, signed_as, happened)
+
+    @mcp.tool(annotations=READ, description=tr("lesson.tool.list"))
+    def list_lessons(
+        project_id: Annotated[str | None, Field(description=tr("lesson.param.project_id"))] = None,
+        include_inactive: Annotated[bool, Field(description=tr("lesson.include_inactive"))] = False,
+        limit: Annotated[int, Field(description=tr("lesson.limit"))] = 50,
+    ) -> str:
+        return run("list_lessons", project_id, include_inactive, limit)
+
+    @mcp.tool(annotations=WRITE, description=tr("lesson.tool.update"))
+    def update_record(
+        record_id: Annotated[str, Field(description=tr("lesson.record_id"))],
+        changes: Annotated[dict, Field(description=tr("lesson.changes"))],
+        signed_as: Signed = None,
+    ) -> str:
+        return run("update_record", record_id, changes, signed_as)
+
+    @mcp.tool(annotations=WRITE, description=tr("digest.tool.digest"))
+    def lesson_digest(
+        batch: Annotated[int, Field(description=tr("digest.param.batch"))] = 1,
+        notify: Annotated[bool, Field(description=tr("digest.param.notify"))] = False,
+        signed_as: Signed = None,
+    ) -> str:
+        return run("lesson_digest", batch, notify, signed_as)
+
+    @mcp.tool(annotations=WRITE, description=tr("digest.tool.review"))
+    def review_lessons(
+        confirm: Annotated[list[str] | None, Field(description=tr("digest.param.confirm"))] = None,
+        retire: Annotated[list[dict] | None, Field(description=tr("digest.param.retire"))] = None,
+        done: Annotated[bool, Field(description=tr("digest.param.done"))] = False,
+        signed_as: Signed = None,
+    ) -> str:
+        return run("review_lessons", confirm, retire, done, signed_as)
+
+    @mcp.tool(annotations=WRITE, description=tr("edit.tool.page", owner=owner_name))
+    def update_page(
+        kind: Annotated[str, Field(description=tr("edit.param.kind"))],
+        page_id: Annotated[str, Field(description=tr("edit.param.id"))],
+        body: Annotated[str, Field(description=tr("edit.param.body"))],
+        title: Annotated[str | None, Field(description=tr("edit.param.title"))] = None,
+        signed_as: Signed = None,
+    ) -> str:
+        return run("update_page", kind, page_id, body, title, signed_as)
+
+    @mcp.tool(annotations=READ, description=tr("history.tool"))
+    def history(
+        target: Annotated[str, Field(description=tr("history.target"))],
+        limit: Annotated[int, Field(description=tr("history.limit"))] = 10,
+    ) -> str:
+        return run("history", target, limit)
 
     @mcp.tool(annotations=WRITE, description=tr("agent.644"))
     def update_project_status(
@@ -164,12 +236,14 @@ def build_server(root: str, agent_key: str | None, *, remote: bool = False, oaut
     @mcp.tool(annotations=WRITE, description=tr("agent.645"))
     def update_project_summary(
         project_id: Annotated[str, Field(description=tr("agent.389"))],
-        sections: Annotated[dict, Field(description=(
-            tr("agent.391")))],
+        sections: Annotated[dict | None, Field(description=tr("agent.391"))] = None,
         signed_as: Signed = None,
+        state: Annotated[str | None, Field(description=tr("edit.param.state"))] = None,
+        title: Annotated[str | None, Field(description=tr("edit.param.title"))] = None,
+        goal: Annotated[str | None, Field(description=tr("edit.param.goal"))] = None,
     ) -> str:
-        """现状、下一步、分工、入口变了时用这个改正文；进展照常用 update_project_status 记。"""
-        return run("update_project_summary", project_id, sections, signed_as)
+        """改项目摘要；全读写入者还能改状态、标题、目标和边界。"""
+        return run("update_project_summary", project_id, sections, signed_as, state, title, goal)
 
     @mcp.tool(annotations=WRITE, description=tr("agent.646"))
     def record_decision(
@@ -182,10 +256,15 @@ def build_server(root: str, agent_key: str | None, *, remote: bool = False, oaut
         visible_to: Annotated[list[str] | None, Field(description=tr("agent.398"))] = None,
         access_note: Annotated[str | None, Field(description=tr("agent.399"))] = None,
         signed_as: Signed = None,
+        source: Annotated[str | None, Field(description=tr("lesson.param.source"))] = None,
+        expires: Annotated[str | None, Field(description=tr("lesson.param.expires"))] = None,
+        pending: Annotated[bool, Field(description=tr("lesson.param.pending"))] = False,
+        supersedes: Annotated[list[str] | None, Field(description=tr("lesson.param.supersedes"))] = None,
+        happened: Annotated[str | None, Field(description=tr("lesson.param.happened"))] = None,
     ) -> str:
         """记一条决定（新建一份决定记录），并以你的身份提交一次 git。"""
         return run("record_decision", title, decision, reason, decided_by, project_id,
-                   sensitivity, visible_to, access_note, signed_as)
+                   sensitivity, visible_to, access_note, signed_as, source, expires, pending, supersedes, happened)
 
     @mcp.tool(annotations=WRITE, description=tr("agent.371", v0=owner_name))
     def handover_role(
@@ -384,15 +463,21 @@ def remote_app(root: str, port: int, host: str = "127.0.0.1", public_host: str |
     return mount(root, port, host, public_host, web_test_origin=web_test_origin)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    import argparse
     import sys
 
-    if sys.argv[1:2] == ["--remote"]:  # python -m onestead.server --remote [端口]
-        return main_remote(sys.argv[2:])
-    root = config.data_dir()
-    # 客户端按 UTF-8 读服务的错误输出；Windows 中文系统默认 GBK，中文日志会被读坏。
-    sys.stderr.reconfigure(encoding="utf-8")
-    build_server(root, config.env("AGENT")).run("stdio")
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["--remote"]:  # 保留已有远程入口。
+        return main_remote(argv[1:])
+    parser = argparse.ArgumentParser(prog="onestead-mcp")
+    config.path_arguments(parser)
+    parser.add_argument("--agent", "--as")
+    args = parser.parse_args(argv)
+    with config.use_paths(args):
+        root = config.data_dir()
+        sys.stderr.reconfigure(encoding="utf-8")
+        build_server(root, args.agent or config.env("AGENT")).run("stdio")
 
 
 def main_remote(argv: list[str] | None = None) -> None:

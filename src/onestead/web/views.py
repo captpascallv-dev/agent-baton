@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from .. import config
+from ..records import web_state
+from ..store import now_taipei
 
 import datetime as dt
 import re
@@ -17,7 +19,7 @@ from .refs import local_who, project_ref, who_view
 from .render import to_html
 
 KIND_LABEL = {"handbook": "手册", "project": "项目", "project-status": "项目进展", "project-links": "项目链接",
-              "decision": "决定", "asset": "资料", "person": "成员", "home": "首页", "todo": "待办", "app": "应用", "skill": "Skill"}
+              "lesson": "经验", "decision": "决定", "asset": "资料", "person": "成员", "home": "首页", "todo": "待办", "app": "应用", "skill": "Skill"}
 
 
 def taipei(iso: str) -> dt.datetime:
@@ -383,7 +385,8 @@ def decision_list(visible: list[Doc], by_id, members) -> list[dict]:
         items.append({"rel": d.rel, "title": d.title, "date": str(m.get("date") or ""), "decided_by": decider or None,
                       "project": project_ref(pid, by_id, short, keep_missing=True),
                       "recorded_by": local_who(by, members)["name"] if by else None,
-                      "sensitivity": d.sensitivity, "access_note": m.get("access_note"), "problem": d.problem})
+                      "sensitivity": d.sensitivity, "access_note": m.get("access_note"), "problem": d.problem,
+                      **web_state(d, now_taipei().date(), visible)})
     return sorted(items, key=lambda x: (x["date"], x["rel"]), reverse=True)
 
 

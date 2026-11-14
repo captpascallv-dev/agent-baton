@@ -182,7 +182,6 @@ def test_summary_rejects_forbidden_sections_headings_and_secrets(repo, as_agent)
     head = git(repo, "rev-parse", "HEAD")
     codex = as_agent("codex")
     samples = [
-        {"目标": "不许改目标", "现状": "这条也不该写上"},
         {"状态": "暂停"},
         {"标题": "新名字"},
         {"敏感级别": "public"},

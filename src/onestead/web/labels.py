@@ -21,7 +21,7 @@ def file_label(rel: str, by_rel: dict[str, Doc]) -> str:
         return f"{main.title if main else parts[1]} · 进展归档 {Path(rel).stem}"
     doc = by_rel.get(rel)
     title = doc.title if doc else Path(rel).stem
-    prefix = {"decisions": "决定", "assets": "资产", "people": "成员", "handbook": "手册",
+    prefix = {"lessons": "经验", "decisions": "决定", "assets": "资产", "people": "成员", "handbook": "手册",
               "todos": "待办", "apps": "应用", "skills": "Skill"}.get(parts[0])
     if rel == "FORMAT.md":
         return "格式说明"

@@ -13,6 +13,8 @@ import subprocess
 from pathlib import Path
 
 from ..gitops import NO_WINDOW
+from ..git_runtime import run_git
+from ..history import _git, _out, _nul_groups, list_commits, commit_diff, friendly_subject
 from ..redact import documents, safe_text
 from ..store import BaseError, Doc, Viewer, member_keys
 from . import views
@@ -23,81 +25,9 @@ REVERTS_RE = re.compile(r"(?:Reverts:|This reverts commit)\s*([0-9a-f]{7,40})")
 SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 
 
-def _git(root: Path, *args: str, env: dict | None = None, check: bool = True) -> subprocess.CompletedProcess:
-    proc = subprocess.run(["git", "-C", str(root), *args], capture_output=True, env=env, creationflags=NO_WINDOW)
-    if check and proc.returncode != 0:
-        raise BaseError(tr("agent.256", v0=args[0], v1=proc.stderr.decode('utf-8', 'replace').strip()[:300]))
-    return proc
-
-
-def _out(proc: subprocess.CompletedProcess) -> str:
-    return proc.stdout.decode("utf-8", "replace")
-
-
 # ---------- 把路径和作者翻成人话（实现在 labels.py，这里留着原来的名字） ----------
 
-def friendly_subject(subject: str, by_id: dict[str, Doc]) -> str:
-    if subject.startswith("撤回："):
-        return "撤回：" + friendly_subject(subject[3:], by_id)
-    m = re.match(r"^(进展|交接|接任申请)：([a-z0-9-]+)(.*)$", subject)
-    if m:
-        kind, pid, rest = m.groups()
-        name = by_id[pid].title if pid in by_id else pid
-        rest = rest.lstrip(" —").lstrip("的")
-        return f"{name} · {kind}：{rest}" if rest else f"{name} · {kind}"
-    return subject
-
-
 # ---------- 读历史 ----------
-
-def _nul_groups(blob: str, width: int) -> list[list[str]]:
-    """按固定个数切开 NUL 分隔的字段。提交说明里不能出现 NUL，所以内容拆不开边界。"""
-    if blob.endswith("\0"):
-        blob = blob[:-1]
-    if not blob:
-        return []
-    parts = blob.split("\0")
-    if len(parts) % width:
-        raise BaseError(tr("agent.626"))
-    return [parts[i:i + width] for i in range(0, len(parts), width)]
-
-
-def _commit_files(root: Path, limit: int) -> dict[str, list[str]]:
-    """路径单独读，不和提交说明混在同一次拆分里。记录之间是两个 NUL。"""
-    text = _out(_git(root, "log", f"-n{int(limit)}", "-z", "--name-only", "--pretty=format:%H"))
-    found = {}
-    for rec in text.split("\0\0"):
-        if not rec.strip("\0"):
-            continue
-        head, _, files = rec.partition("\n")
-        sha = head.strip("\0")
-        if sha:
-            found[sha] = [name for name in files.split("\0") if name]
-    return found
-
-
-def list_commits(root: Path, limit: int = 200) -> list[dict]:
-    # 元数据五个字段用 NUL 隔开，和文件路径分两次取。不能改成有限次 split：说明里可以含任意可见字符。
-    meta = _out(_git(root, "log", f"-n{int(limit)}", "-z", "--format=%H%x00%an%x00%aI%x00%s%x00%b"))
-    files_of = _commit_files(root, limit)
-    commits = []
-    for sha, author, when, subject, body in _nul_groups(meta, 5):
-        commits.append({"sha": sha, "author": author, "when": when, "subject": subject,
-                        "body": body.strip(), "files": files_of.get(sha, [])})
-    # 谁被撤回过
-    reverted_by = {}
-    for c in commits:
-        for target in REVERTS_RE.findall(c["body"]):
-            reverted_by.setdefault(target, c["sha"])
-    for c in commits:
-        c["reverted_by"] = next((v for k, v in reverted_by.items() if c["sha"].startswith(k)), None)
-        c["reverts"] = (REVERTS_RE.findall(c["body"]) or [None])[0]
-        c["is_root"] = False
-    root_sha = _out(_git(root, "rev-list", "--max-parents=0", "HEAD")).split()
-    for c in commits:
-        c["is_root"] = c["sha"] in root_sha
-    return commits
-
 
 def workspace_commits(root: Path, viewer: Viewer, docs: list[Doc], limit: int = 500) -> list[dict]:
     """一次当前快照决定可见路径；摘要、统计、详情和撤回共用这个集合。"""
@@ -164,7 +94,7 @@ def workspace_commits(root: Path, viewer: Viewer, docs: list[Doc], limit: int = 
 
 def _revertable(commit: dict) -> bool:
     """停用、恢复成员只能走成员页，不给 git 撤回把远程接入和飞书绑定一起翻回来。"""
-    if commit["is_root"] or commit["reverted_by"]:
+    if commit["is_root"] or commit["reverted_by"] or ".onestead/dataset.json" in commit["files"]:
         return False
     subject = commit["subject"]
     while subject.startswith("撤回："):
@@ -180,39 +110,6 @@ def find_workspace_commit(entries: list[dict], sha: str) -> dict | None:
     return matches[0] if len(matches) == 1 else None
 
 
-def commit_diff(root: Path, sha: str) -> list[dict]:
-    """每个文件一段：增加的行、删掉的行、上下文。"""
-    if not SHA_RE.match(sha or ""):
-        raise BaseError(tr("agent.627"))
-    text = _out(_git(root, "show", "--format=", "--unified=2", "--no-renames", "--no-color", sha))
-    files, cur = [], None
-    for line in text.splitlines():
-        if line.startswith("diff --git "):
-            path = line.split(" b/", 1)[-1]
-            cur = {"path": path, "lines": [], "status": "modified"}
-            files.append(cur)
-        elif cur is None:
-            continue
-        elif line.startswith("new file"):
-            cur["status"] = "added"
-        elif line.startswith("deleted file"):
-            cur["status"] = "deleted"
-        elif line.startswith(("index ", "--- ", "+++ ", "similarity", "rename ")):
-            continue
-        elif line.startswith("@@"):
-            if cur["lines"]:  # 第一段前面不用分隔线
-                cur["lines"].append({"t": "gap", "s": ""})
-        elif line.startswith("+"):
-            cur["lines"].append({"t": "add", "s": line[1:]})
-        elif line.startswith("-"):
-            cur["lines"].append({"t": "del", "s": line[1:]})
-        elif line.startswith("\\"):
-            continue
-        else:
-            cur["lines"].append({"t": "ctx", "s": line[1:] if line.startswith(" ") else line})
-    return files
-
-
 # ---------- 撤回 ----------
 
 def revert(root: Path, sha: str, reason: str | None = None) -> dict:
@@ -226,6 +123,8 @@ def revert(root: Path, sha: str, reason: str | None = None) -> dict:
         raise BaseError(tr("agent.629"))
     subject = _out(_git(root, "log", "-1", "--format=%s", full)).strip()
     files = [f for f in _out(_git(root, "show", "--format=", "--name-only", "--no-renames", full)).splitlines() if f]
+    if ".onestead/dataset.json" in files:
+        raise BaseError(tr("bundle.dataset_readonly"))
     proc = _git(root, "revert", "--no-commit", "--no-edit", full, check=False)
     if proc.returncode != 0:
         _git(root, "revert", "--abort", check=False)
@@ -240,7 +139,7 @@ def revert(root: Path, sha: str, reason: str | None = None) -> dict:
                + f"\n\nReverts: {full}\nAgent: {config.owner_key()}\n")
     env = dict(os.environ, GIT_AUTHOR_NAME=config.owner_key(), GIT_AUTHOR_EMAIL=f"{config.owner_key()}@company-base.local",
                GIT_COMMITTER_NAME=config.owner_key(), GIT_COMMITTER_EMAIL=f"{config.owner_key()}@company-base.local")
-    proc = subprocess.run(["git", "-C", str(root), "commit", "-q", "-F", "-"], input=message.encode("utf-8"),
+    proc = run_git(["commit", "-q", "-F", "-"], root=root, input=message.encode("utf-8"),
                           capture_output=True, env=env, creationflags=NO_WINDOW)
     if proc.returncode != 0:
         _git(root, "revert", "--abort", check=False)

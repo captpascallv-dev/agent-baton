@@ -14,6 +14,12 @@ from .store import BaseError
 
 MAX_TEXT = 4000
 
+
+def toml_basic_string(value: str) -> str:
+    import json
+
+    return json.dumps(value, ensure_ascii=False)
+
 # 像密钥的内容一律拒绝写入（底座从不存凭据的值）
 SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_\-]{20,}"),
@@ -110,11 +116,18 @@ class _FrontDumper(yaml.SafeDumper):
     pass
 
 
+class _Quoted(str):
+    pass
+
+
+_FrontDumper.add_representer(_Quoted, lambda d, value: d.represent_scalar("tag:yaml.org,2002:str", value, style="'"))
 _FrontDumper.add_representer(
     _Front, lambda d, data: d.represent_mapping("tag:yaml.org,2002:map", data, flow_style=False))
 
 
 def _dump_front(meta: dict) -> str:
+    meta = {k: _Quoted(v) if k in ("lessons_reviewed_at", "lessons_notified_at") and isinstance(v, str) else v
+            for k, v in meta.items()}
     text = yaml.dump(_Front(meta), Dumper=_FrontDumper, allow_unicode=True, sort_keys=False,
                      default_flow_style=None, width=1000)
     return f"---\n{text}---\n"

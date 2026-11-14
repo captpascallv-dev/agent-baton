@@ -349,3 +349,61 @@ def test_demo_subprocess_timings(tmp_path, monkeypatch):
         assert proc.returncode == 0, proc.stderr
         assert json.loads(proc.stdout)["ok"] is True
         print(f"demo api:{method}: {elapsed:.3f}s")
+
+
+def test_record_decision_over_api_replays_by_origin(wire, repo):
+    params = {"title": "周报先下结论", "decision": "每项先写结论。", "reason": "他一眼要看到结果。",
+              "decided_by": "主人", "project_id": "alpha", "source": "owner", "signed_as": "Writer",
+              "origin_id": "app:decision:1"}
+    first = success(wire, "record_decision", params)
+    assert first["skipped"] is False and first["commit"] == git(repo, "rev-parse", "--short", "HEAD")
+    assert first["path"] == f"decisions/{first['id']}.md"
+    doc = next(d for d in Store(repo).load() if d.kind == "decision" and d.id == first["id"])
+    assert (doc.meta["origin_id"], doc.meta["source"], doc.meta["project"]) == ("app:decision:1", "owner", "alpha")
+    # 丢了回执原样重发（哪怕正文改了）：只跳过，不多记一条。
+    again = success(wire, "record_decision", {**params, "decision": "改过的正文。"})
+    assert again == {"id": first["id"], "path": first["path"], "commit": None, "skipped": True}
+    assert sum(d.meta.get("origin_id") == "app:decision:1" for d in Store(repo).load() if d.kind == "decision") == 1
+    # 经验和决定各查各的：同一个键在经验上，不挡决定。
+    success(wire, "import_lessons", {"items": [{"lesson": "先看结论", "origin_id": "shared-key"}], "signed_as": "Writer"})
+    assert success(wire, "record_decision", {**params, "origin_id": "shared-key"})["skipped"] is False
+    failure(wire, "invalid", "record_decision", {k: v for k, v in params.items() if k != "signed_as"})
+    failure(wire, "invalid", "record_decision", {**params, "origin_id": "x" * 121})
+    failure(wire, "invalid", "record_decision", {**params, "visible_to": [1]})
+
+
+def test_list_lessons_company_only(wire, repo):
+    success(wire, "record_lesson", {"lesson": "公司共用的一条", "signed_as": "Writer"})
+    success(wire, "record_lesson", {"lesson": "公司共用待确认", "pending": True, "signed_as": "Writer"})
+    success(wire, "record_lesson", {"lesson": "项目里的一条", "project_id": "alpha", "signed_as": "Writer"})
+    every = success(wire, "list_lessons", {})
+    assert {x["lesson"] for x in every["lessons"]} == {"公司共用的一条", "项目里的一条"}
+    only = success(wire, "list_lessons", {"company_only": True, "max_chars": 3000})
+    assert [x["lesson"] for x in only["lessons"]] == ["公司共用的一条"]
+    assert [x["title"] for x in only["pending"]] == ["公司共用待确认"]
+    assert success(wire, "list_lessons", {"company_only": True, "max_chars": 0})["truncated"] == 1
+    failure(wire, "invalid", "list_lessons", {"company_only": True, "project": "alpha"})
+    failure(wire, "invalid", "list_lessons", {"company_only": "yes"})
+
+
+def test_set_owner_name(wire, repo):
+    from .support import put
+    put(repo, f"people/{OWNER}.md", {"id": OWNER, "type": "person", "title": OWNER_NAME, "agent_key": OWNER,
+        "kind": "human", "remote_enabled": False, "access_mode": "full", "can_write": True, "sensitivity": "internal"},
+        f"# {OWNER_NAME}" + chr(10) * 2 + f"{OWNER_NAME}（`{OWNER}`）是这家公司的主人。" + chr(10))
+    first = success(wire, "set_owner_name", {"name": "林老板", "signed_as": "Writer"})
+    assert first == {"key": OWNER, "name": "林老板", "commit": git(repo, "rev-parse", "--short", "HEAD")}
+    assert success(wire, "owner") == {"key": OWNER, "name": "林老板"}
+    doc = next(d for d in Store(repo).load() if d.kind == "person" and d.id == OWNER)
+    assert doc.meta["title"] == "林老板" and "# 林老板" in doc.body and f"林老板（`{OWNER}`）" in doc.body
+    # 名字没变：不提交，结果一样，可以放心重放。
+    head = git(repo, "rev-parse", "HEAD")
+    assert success(wire, "set_owner_name", {"name": "林老板"})["commit"] is None
+    assert git(repo, "rev-parse", "HEAD") == head
+    failure(wire, "invalid", "set_owner_name", {"name": "两行" + chr(10) + "名字"})
+    failure(wire, "invalid", "set_owner_name", {"name": "长" * 81})
+    failure(wire, "invalid", "set_owner_name", {"name": "   "})
+    failure(wire, "invalid", "set_owner_name", {})
+    # 只有主人和归属主人的全读能写伙伴能改：按授权的不行。
+    change(repo, "people/claude.md", access_mode="assigned", projects=["alpha"])
+    failure(wire, "forbidden", "set_owner_name", {"name": "冒名", "signed_as": "Writer"})

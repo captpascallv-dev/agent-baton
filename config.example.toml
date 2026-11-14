@@ -2,6 +2,8 @@
 name = "Onestead"
 # 公司界面语言：en / zh，默认 en；可用 ONESTEAD_LANG 覆盖，旧名 COMPANY_BASE_LANG 也认。
 lang = "en"
+# 常读经验的字数上限，非负整数；ONESTEAD_LESSONS_BRIEF_CHARS 优先。
+lessons_brief_chars = 3000
 # 数据仓库目录，必填；也可用 ONESTEAD_DATA。
 data_dir = "<数据目录>"
 # 对外域名（不带协议、端口或路径），对外上线必填；也可用 ONESTEAD_PUBLIC_HOST。

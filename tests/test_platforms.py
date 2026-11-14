@@ -232,6 +232,7 @@ def backup_sandbox(configured_data, tmp_path, monkeypatch):
     git(code, "init", "-q", "-b", "main")
     git(code, "config", "user.name", "test")
     git(code, "config", "user.email", "test@example.com")
+    git(code, "config", "core.autocrlf", "false")  # 与被测 Git 一样，不依赖宿主全局配置。
     (code / "source.txt").write_text("测试源码\n", encoding="utf-8")
     git(code, "add", ".")
     git(code, "commit", "-qm", "测试初始提交")
@@ -333,6 +334,7 @@ def test_failed_verification_keeps_current_slot(backup_sandbox, monkeypatch):
 @pytest.mark.parametrize("platform", ["win32", "darwin", "linux"])
 @pytest.mark.parametrize("failure", [False, True])
 def test_recycle_never_permanently_deletes(platform, failure, tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("SystemRoot", str(tmp_path / "Windows"))
     monkeypatch.setattr(sys, "platform", platform)
     folder = tmp_path / "校验'目录"
     folder.mkdir()
@@ -343,7 +345,7 @@ def test_recycle_never_permanently_deletes(platform, failure, tmp_path, monkeypa
             raise OSError("无法回收")
     def run(args, **kwargs):
         calls.append(args)
-        assert args[:3] == ["powershell", "-NoProfile", "-Command"]
+        assert args[:3] == [str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"), "-NoProfile", "-Command"]
         assert "SendToRecycleBin" in args[3] and "校验''目录" in args[3]
         return SimpleNamespace(returncode=1 if failure else 0)
     monkeypatch.setitem(sys.modules, "send2trash", SimpleNamespace(send2trash=trash))

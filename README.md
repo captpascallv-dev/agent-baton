@@ -14,7 +14,7 @@ Onestead puts those company facts in a git repository you own, gives agents MCP 
 
 ### Keep company facts in one place
 
-Store the handbook, projects, decisions, assets, and members as Markdown. Agents can read and search them, add progress, update project summaries, and record decisions. Writes create git commits attributed to the member who made them. The owner can review changes and revert eligible commits from the local web app.
+Store the handbook, projects, decisions, assets, and members as Markdown. Agents can read and search them, add progress, update project summaries, and record decisions. Project and company-wide lessons travel with the work; newer records can supersede older ones, with pending, expiry, and retirement states and a searchable change history. Writes create git commits attributed to the member who made them. The owner can review changes and revert eligible commits from the local web app.
 
 ### Publish small web apps
 
